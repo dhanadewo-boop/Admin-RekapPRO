@@ -1,0 +1,25 @@
+{
+  "name": "admin-penjualanpro",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3",
+    "vite": "^7.3.1"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.97.0",
+    "@vitejs/plugin-react": "^5.1.4",
+    "dexie": "^4.3.0",
+    "lucide-react": "^0.575.0",
+    "react-dropzone": "^15.0.0",
+    "react-router-dom": "^7.13.0",
+    "recharts": "^3.7.0",
+    "tesseract.js": "^7.0.0"
+  }
+}
