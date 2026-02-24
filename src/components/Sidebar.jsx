@@ -52,9 +52,9 @@ export default function Sidebar() {
             <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`} style={{
                 position: 'fixed', top: 0, left: 0, bottom: 0,
                 width: collapsed ? 'var(--sidebar-collapsed)' : 'var(--sidebar-width)',
-                background: 'rgba(10, 14, 26, 0.95)',
-                backdropFilter: 'blur(20px)',
+                background: '#FFFFFF',
                 borderRight: '1px solid var(--border-glass)',
+                boxShadow: '2px 0 12px rgba(72, 169, 166, 0.06)',
                 display: 'flex', flexDirection: 'column',
                 padding: '20px 12px',
                 transition: 'width var(--transition-normal)',

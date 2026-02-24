@@ -32,8 +32,8 @@ export default function ProgressBar({ value, max, label, showPercentage = true, 
                     transition: 'width 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
                     animation: 'progressFill 1s ease-out',
                     boxShadow: isCompleted
-                        ? '0 0 12px rgba(16, 185, 129, 0.4)'
-                        : '0 0 12px rgba(59, 130, 246, 0.3)'
+                        ? '0 0 12px rgba(46, 204, 113, 0.3)'
+                        : '0 0 12px rgba(72, 169, 166, 0.25)'
                 }} />
             </div>
             {showPercentage && (

@@ -1,8 +1,8 @@
 import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone';
-import { extractText, parseInvoiceText } from '../lib/ocrEngine';
-import { Upload, ScanLine, Image as ImageIcon, AlertCircle } from 'lucide-react';
+import { extractText, parseInvoiceText, pdfToImages } from '../lib/ocrEngine';
+import { Upload, ScanLine, Image as ImageIcon, AlertCircle, FileText } from 'lucide-react';
 
 export default function ScanPage() {
     const [imageFile, setImageFile] = useState(null);
@@ -16,16 +16,24 @@ export default function ScanPage() {
         if (files.length > 0) {
             const file = files[0];
             setImageFile(file);
-            setImagePreview(URL.createObjectURL(file));
+            // For PDFs, don't create an object URL preview (we'll show an icon instead)
+            if (file.type === 'application/pdf' || file.name?.toLowerCase().endsWith('.pdf')) {
+                setImagePreview('pdf');
+            } else {
+                setImagePreview(URL.createObjectURL(file));
+            }
             setError('');
         }
     }, []);
 
     const { getRootProps, getInputProps, isDragActive } = useDropzone({
         onDrop,
-        accept: { 'image/*': ['.png', '.jpg', '.jpeg', '.webp', '.bmp'] },
+        accept: {
+            'image/*': ['.png', '.jpg', '.jpeg', '.webp', '.bmp'],
+            'application/pdf': ['.pdf']
+        },
         maxFiles: 1,
-        maxSize: 10 * 1024 * 1024
+        maxSize: 20 * 1024 * 1024 // 20MB for PDFs
     });
 
     const handleProcess = async () => {
@@ -40,7 +48,17 @@ export default function ScanPage() {
 
             // Store data in sessionStorage for the validate page
             sessionStorage.setItem('ocrResult', JSON.stringify(parsed));
-            sessionStorage.setItem('ocrImage', imagePreview);
+
+            // For PDFs, generate a first-page preview image
+            let previewUrl = imagePreview;
+            if (imagePreview === 'pdf') {
+                const pageImages = await pdfToImages(imageFile);
+                if (pageImages.length > 0) {
+                    previewUrl = URL.createObjectURL(pageImages[0]);
+                }
+            }
+            sessionStorage.setItem('ocrImage', previewUrl);
+
             // Store the actual file for upload later
             const reader = new FileReader();
             reader.onload = () => {
@@ -115,15 +133,31 @@ export default function ScanPage() {
                                 <h3>
                                     {isDragActive ? 'Lepaskan gambar di sini...' : 'Seret & lepas foto invoice'}
                                 </h3>
-                                <p>atau klik untuk memilih file (PNG, JPG, WEBP • Maks 10MB)</p>
+                                <p>atau klik untuk memilih file (PNG, JPG, WEBP, PDF • Maks 20MB)</p>
                             </div>
                         </div>
                     ) : (
                         <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
-                            {/* Image Preview */}
-                            <div className="image-preview" style={{ maxHeight: 500 }}>
-                                <img src={imagePreview} alt="Invoice preview" />
-                            </div>
+                            {/* Image or PDF Preview */}
+                            {imagePreview === 'pdf' ? (
+                                <div style={{
+                                    display: 'flex', flexDirection: 'column',
+                                    alignItems: 'center', justifyContent: 'center',
+                                    padding: '48px 24px', gap: 12
+                                }}>
+                                    <FileText size={64} color="var(--accent-blue)" />
+                                    <p style={{ fontSize: '1rem', fontWeight: 600 }}>
+                                        {imageFile?.name}
+                                    </p>
+                                    <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                                        PDF akan dikonversi ke gambar lalu di-OCR
+                                    </p>
+                                </div>
+                            ) : (
+                                <div className="image-preview" style={{ maxHeight: 500 }}>
+                                    <img src={imagePreview} alt="Invoice preview" />
+                                </div>
+                            )}
 
                             {/* Action Bar */}
                             <div style={{
