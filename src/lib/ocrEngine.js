@@ -4,6 +4,7 @@ import { createWorker } from 'tesseract.js';
  * Run OCR on an image file and return raw text
  */
 export async function extractText(imageFile, onProgress) {
+    const optimizedImage = await preprocessForOCR(imageFile);
     const worker = await createWorker('ind+eng', 1, {
         logger: (m) => {
             if (m.status === 'recognizing text' && onProgress) {
@@ -12,7 +13,12 @@ export async function extractText(imageFile, onProgress) {
         }
     });
 
-    const { data: { text } } = await worker.recognize(imageFile);
+    await worker.setParameters({
+        tessedit_pageseg_mode: 6,
+        preserve_interword_spaces: '1'
+    });
+
+    const { data: { text } } = await worker.recognize(optimizedImage);
     await worker.terminate();
     return text;
 }
@@ -25,7 +31,6 @@ export async function extractText(imageFile, onProgress) {
 export function parseInvoiceText(rawText) {
     const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
     const fullText = lines.join('\n');
-    const fullTextLower = fullText.toLowerCase();
 
     let customerName = '';
     let invoiceNumber = '';
@@ -40,10 +45,13 @@ export function parseInvoiceText(rawText) {
     // ============================================================
     // Pattern: "Nama Customer : PT. Karisma Indoagro"
     const custPatterns = [
-        /nama\s*customer\s*[:;]\s*(.+)/i,
+        /(?:nama\s*customer|customer\s*name|nama\s*pelanggan)\s*[:;=\-]\s*(.+)/i,
+        /customer\s*[:;=\-]\s*(.+)/i,
+        /kepada\s*yth\s*[:;=\-]\s*(.+)/i,
+        /kepada\s*[:;=\-]\s*(.+)/i,
+        /ditujukan\s*kepada\s*[:;=\-]\s*(.+)/i,
         /customer\s*[:;]\s*(.+)/i,
         /pelanggan\s*[:;]\s*(.+)/i,
-        /kepada\s*[:;]\s*(.+)/i,
         /pembeli\s*[:;]\s*(.+)/i,
         /bill\s*to\s*[:;]\s*(.+)/i,
         /sold\s*to\s*[:;]\s*(.+)/i,
@@ -51,7 +59,7 @@ export function parseInvoiceText(rawText) {
     for (const pat of custPatterns) {
         const m = fullText.match(pat);
         if (m) {
-            customerName = cleanValue(m[1]);
+            customerName = sanitizeCustomerName(m[1]);
             break;
         }
     }
@@ -59,11 +67,15 @@ export function parseInvoiceText(rawText) {
     if (!customerName) {
         for (const line of lines) {
             const m = line.match(/\b((?:PT|CV|Toko|UD|TB|PD)\.?\s+[A-Za-z][A-Za-z\s.]+)/i);
-            if (m && !line.toLowerCase().includes('kalatham') && !line.toLowerCase().includes('formulir')) {
-                customerName = cleanValue(m[1]);
+            if (m && !line.toLowerCase().includes('kalatham') && !line.toLowerCase().includes('formulir') && !/^\s*tp\s*=\s*/i.test(line)) {
+                customerName = sanitizeCustomerName(m[1]);
                 break;
             }
         }
+    }
+
+    if (!customerName) {
+        customerName = extractCustomerNameFromTemplate(lines);
     }
 
     // ============================================================
@@ -167,20 +179,20 @@ export function parseInvoiceText(rawText) {
     // 5. EXTRACT DISCOUNT
     // ============================================================
     const discPatterns = [
-        /disc(?:ount)?\s+(\d+)\s*%/i,
-        /diskon\s+(\d+)\s*%/i,
-        /potongan\s+(\d+)\s*%/i,
+        /disc(?:ount)?\s*[:=\-]?\s*(\d+(?:[.,]\d+)?)\s*%/i,
+        /diskon\s*[:=\-]?\s*(\d+(?:[.,]\d+)?)\s*%/i,
+        /potongan\s*[:=\-]?\s*(\d+(?:[.,]\d+)?)\s*%/i,
     ];
     for (const pat of discPatterns) {
         const m = fullText.match(pat);
         if (m) {
-            discount = parseInt(m[1]);
+            discount = parseFloat(m[1].replace(',', '.'));
             break;
         }
     }
 
     // Also try to find disc amount directly
-    const discAmountMatch = fullText.match(/disc[^\n]*?([\d.]{6,})/i);
+    const discAmountMatch = fullText.match(/(?:disc(?:ount)?|diskon|potongan)[^\n]*?([\d.,]{4,})/i);
     let discountAmount = 0;
     if (discAmountMatch) {
         discountAmount = parseNumber(discAmountMatch[1]);
@@ -208,6 +220,10 @@ export function parseInvoiceText(rawText) {
     // Subtotal from products
     if (products.length > 0) {
         subtotalBeforeDisc = products.reduce((sum, p) => sum + (p.subtotal || 0), 0);
+    }
+
+    if (discount === 0 && discountAmount > 0 && subtotalBeforeDisc > 0) {
+        discount = Math.round((discountAmount / subtotalBeforeDisc) * 10000) / 100;
     }
 
     // Determine the final total
@@ -271,4 +287,93 @@ function cleanValue(str) {
         .replace(/[|_]+$/g, '')
         .replace(/^\s*[:;]\s*/, '')
         .trim();
+}
+
+function sanitizeCustomerName(name) {
+    if (!name) return '';
+    return cleanValue(name)
+        .replace(/^\s*tp\s*=\s*\w+\s*$/i, '')
+        .replace(/^\s*tp\s*=\s*/i, '')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+}
+
+function extractCustomerNameFromTemplate(lines) {
+    const blockedWords = ['kalatham', 'formulir', 'invoice', 'surat', 'npwp', 'gudang', 'harga', 'qty', 'total'];
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const lower = line.toLowerCase();
+        if (!lower.includes('customer')) continue;
+
+        const afterSeparator = line.split(/[:;=\-]/).slice(1).join(' ').trim();
+        if (afterSeparator) {
+            const candidate = sanitizeCustomerName(afterSeparator);
+            if (candidate && !blockedWords.some(word => candidate.toLowerCase().includes(word))) {
+                return candidate;
+            }
+        }
+
+        for (let j = i + 1; j <= i + 2 && j < lines.length; j++) {
+            const candidate = sanitizeCustomerName(lines[j]);
+            if (
+                candidate &&
+                candidate.length >= 3 &&
+                !/^\d/.test(candidate) &&
+                !/^\s*tp\s*=\s*/i.test(candidate) &&
+                !blockedWords.some(word => candidate.toLowerCase().includes(word))
+            ) {
+                return candidate;
+            }
+        }
+    }
+    return '';
+}
+
+async function preprocessForOCR(imageFile) {
+    if (typeof document === 'undefined') return imageFile;
+
+    try {
+        const source = await loadImageElement(imageFile);
+        const scale = 2;
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(source.width * scale);
+        canvas.height = Math.round(source.height * scale);
+
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        if (!ctx) return imageFile;
+
+        ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+
+        for (let i = 0; i < data.length; i += 4) {
+            const gray = data[i] * 0.299 + data[i + 1] * 0.587 + data[i + 2] * 0.114;
+            const normalized = gray > 160 ? 255 : gray < 90 ? 0 : gray;
+            data[i] = normalized;
+            data[i + 1] = normalized;
+            data[i + 2] = normalized;
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+        return canvas;
+    } catch (error) {
+        console.warn('Preprocessing OCR gagal, lanjut pakai gambar asli:', error);
+        return imageFile;
+    }
+}
+
+async function loadImageElement(file) {
+    return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        const image = new Image();
+        image.onload = () => {
+            URL.revokeObjectURL(url);
+            resolve(image);
+        };
+        image.onerror = (err) => {
+            URL.revokeObjectURL(url);
+            reject(err);
+        };
+        image.src = url;
+    });
 }

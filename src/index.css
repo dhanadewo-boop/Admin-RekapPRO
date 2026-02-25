@@ -674,21 +674,24 @@ input:focus, select:focus, textarea:focus {
    ===================================================== */
 .validate-layout {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(520px, 1.35fr) minmax(420px, 1fr);
   gap: var(--space-lg);
   min-height: calc(100vh - 140px);
 }
 
 .validate-image-panel {
   position: sticky;
-  top: var(--space-xl);
+  top: var(--space-md);
   height: fit-content;
 }
 
 .validate-image-panel img {
   width: 100%;
+  max-height: calc(100vh - 170px);
+  object-fit: contain;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-glass);
+  background: rgba(2, 6, 23, 0.35);
 }
 
 .validate-form-panel {
