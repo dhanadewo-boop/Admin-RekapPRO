@@ -198,6 +198,16 @@ export default function ValidatePage() {
                                 <p>Tidak ada gambar</p>
                             </div>
                         )}
+                        {imageUrl && (
+                            <div style={{
+                                padding: '8px 12px',
+                                fontSize: '0.75rem',
+                                color: 'var(--text-muted)',
+                                borderTop: '1px solid var(--border-glass)'
+                            }}>
+                                Preview diperbesar untuk memudahkan validasi data OCR.
+                            </div>
+                        )}
                     </div>
                 </div>
 
