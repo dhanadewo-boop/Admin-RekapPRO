@@ -21,8 +21,7 @@ export default function ValidatePage() {
         customerName: '',
         invoiceNumber: '',
         invoiceDate: '',
-        products: [{ name: '', qty: 1, unitPrice: 0, subtotal: 0 }],
-        discount: 0,
+        products: [{ name: '', qty: 1, unitPrice: 0, subtotal: 0, discountPercent: 0 }],
         totalAmount: 0
     });
 
@@ -34,14 +33,22 @@ export default function ValidatePage() {
 
         if (ocrResult) {
             const parsed = JSON.parse(ocrResult);
+            // Ensure date is in DD-MMM-YYYY format
+            let dateVal = parsed.invoiceDate || '';
+            const numMatch = dateVal.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
+            if (numMatch) {
+                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                const mo = parseInt(numMatch[2]);
+                dateVal = `${numMatch[1].padStart(2, '0')}-${months[mo - 1] || numMatch[2]}-${numMatch[3]}`;
+            }
             setFormData({
                 customerName: parsed.customerName || '',
+                city: parsed.city || '',
                 invoiceNumber: parsed.invoiceNumber || '',
-                invoiceDate: parsed.invoiceDate || '',
+                invoiceDate: dateVal,
                 products: parsed.products?.length > 0
                     ? parsed.products
-                    : [{ name: '', qty: 1, unitPrice: 0, subtotal: 0 }],
-                discount: parsed.discount || 0,
+                    : [{ name: '', qty: 1, unitPrice: 0, subtotal: 0, discountPercent: 0 }],
                 totalAmount: parsed.totalAmount || 0
             });
         }
@@ -60,25 +67,22 @@ export default function ValidatePage() {
     };
 
     const recalcTotals = (products) => {
-        const subtotal = products.reduce((sum, p) => sum + (p.subtotal || 0), 0);
-        const totalDiscount = products.reduce((sum, p) => sum + (p.discountAmount || 0), 0);
-        const totalAmount = subtotal - totalDiscount;
-        return { subtotal, totalDiscount, totalAmount };
+        // subtotal is already net (after discount)
+        const totalAmount = products.reduce((sum, p) => sum + (p.subtotal || 0), 0);
+        return { totalAmount };
     };
 
     const updateProduct = (index, field, value) => {
         setFormData(prev => {
             const products = [...prev.products];
             products[index] = { ...products[index], [field]: value };
-            // Auto-calculate subtotal
-            if (field === 'qty' || field === 'unitPrice') {
-                products[index].subtotal = products[index].qty * products[index].unitPrice;
-            }
-            // Auto-calculate per-product discount
-            if (field === 'qty' || field === 'unitPrice' || field === 'discount') {
-                const disc = products[index].discount || 0;
-                products[index].discountAmount = Math.round((products[index].subtotal || 0) * disc / 100);
-                products[index].netTotal = (products[index].subtotal || 0) - products[index].discountAmount;
+            // Recalculate subtotal (net = qty * unitPrice * (1 - disc/100))
+            if (field === 'qty' || field === 'unitPrice' || field === 'discountPercent') {
+                const qty = products[index].qty || 0;
+                const price = products[index].unitPrice || 0;
+                const disc = products[index].discountPercent || 0;
+                const gross = qty * price;
+                products[index].subtotal = gross - Math.round(gross * disc / 100);
             }
             const { totalAmount } = recalcTotals(products);
             return { ...prev, products, totalAmount };
@@ -88,7 +92,7 @@ export default function ValidatePage() {
     const addProduct = () => {
         setFormData(prev => ({
             ...prev,
-            products: [...prev.products, { name: '', qty: 1, unitPrice: 0, subtotal: 0, discount: 0, discountAmount: 0, netTotal: 0 }]
+            products: [...prev.products, { name: '', qty: 1, unitPrice: 0, subtotal: 0, discountPercent: 0 }]
         }));
     };
 
@@ -250,7 +254,7 @@ export default function ValidatePage() {
                                 ref={panRef}
                                 style={{
                                     overflow: 'auto',
-                                    maxHeight: 'calc(100vh - 200px)',
+                                    flex: 1,
                                     cursor: zoom > 1 ? (isDragging.current ? 'grabbing' : 'grab') : 'default'
                                 }}
                                 onWheel={e => {
@@ -376,7 +380,7 @@ export default function ValidatePage() {
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                             {/* Header */}
-                            <div className="product-row" style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 600, gridTemplateColumns: '2fr 0.7fr 1fr 0.5fr 1fr 30px' }}>
+                            <div className="product-row" style={{ fontSize: '0.75rem', color: 'var(--text-primary)', fontWeight: 700, paddingBottom: '8px', borderBottom: '1px solid var(--border-glass)', marginBottom: '8px' }}>
                                 <span>NAMA PRODUK</span>
                                 <span>QTY</span>
                                 <span>HARGA</span>
@@ -386,7 +390,7 @@ export default function ValidatePage() {
                             </div>
 
                             {formData.products.map((prod, i) => (
-                                <div key={i} className="product-row" style={{ gridTemplateColumns: '2fr 0.7fr 1fr 0.5fr 1fr 30px' }}>
+                                <div key={i} className="product-row" style={{ marginBottom: '4px' }}>
                                     <AutoSuggest
                                         value={prod.name}
                                         onChange={val => updateProduct(i, 'name', val)}
@@ -397,16 +401,16 @@ export default function ValidatePage() {
                                         }))}
                                         onSelect={item => {
                                             const products = [...formData.products];
+                                            const qty = products[i].qty || 0;
+                                            const disc = products[i].discountPercent || 0;
+                                            const gross = qty * item.value.price;
                                             products[i] = {
                                                 ...products[i],
                                                 name: item.value.name,
                                                 unitPrice: item.value.price,
-                                                subtotal: products[i].qty * item.value.price,
+                                                subtotal: gross - Math.round(gross * disc / 100),
                                                 productCode: item.value.code
                                             };
-                                            const disc = products[i].discount || 0;
-                                            products[i].discountAmount = Math.round(products[i].subtotal * disc / 100);
-                                            products[i].netTotal = products[i].subtotal - products[i].discountAmount;
                                             const { totalAmount } = recalcTotals(products);
                                             setFormData(prev => ({ ...prev, products, totalAmount }));
                                         }}
@@ -426,14 +430,14 @@ export default function ValidatePage() {
                                     />
                                     <input
                                         type="number"
-                                        value={prod.discount || 0}
-                                        onChange={e => updateProduct(i, 'discount', parseInt(e.target.value) || 0)}
+                                        value={prod.discountPercent || 0}
+                                        onChange={e => updateProduct(i, 'discountPercent', parseInt(e.target.value) || 0)}
                                         min="0" max="100"
                                         style={{ textAlign: 'center' }}
                                     />
                                     <input
                                         type="text"
-                                        value={formatRp(prod.netTotal || prod.subtotal)}
+                                        value={formatRp(prod.subtotal)}
                                         readOnly
                                         style={{ color: 'var(--accent-emerald)', fontWeight: 600 }}
                                     />
@@ -457,14 +461,20 @@ export default function ValidatePage() {
                             <div className="form-group" style={{ flex: 1, minWidth: 120 }}>
                                 <label>Subtotal (sebelum diskon)</label>
                                 <input type="text" readOnly
-                                    value={formatRp(formData.products.reduce((s, p) => s + (p.subtotal || 0), 0))}
+                                    value={formatRp(formData.products.reduce((s, p) => {
+                                        const gross = (p.qty || 0) * (p.unitPrice || 0);
+                                        return s + gross;
+                                    }, 0))}
                                     style={{ fontWeight: 600, color: 'var(--text-secondary)' }} />
                             </div>
-                            {formData.products.some(p => (p.discount || 0) > 0) && (
+                            {formData.products.some(p => (p.discountPercent || 0) > 0) && (
                                 <div className="form-group" style={{ flex: 1, minWidth: 120 }}>
                                     <label>Total Potongan</label>
                                     <input type="text" readOnly
-                                        value={`- ${formatRp(formData.products.reduce((s, p) => s + (p.discountAmount || 0), 0))}`}
+                                        value={`- ${formatRp(formData.products.reduce((s, p) => {
+                                            const gross = (p.qty || 0) * (p.unitPrice || 0);
+                                            return s + Math.round(gross * (p.discountPercent || 0) / 100);
+                                        }, 0))}`}
                                         style={{ fontWeight: 600, color: 'var(--accent-rose)' }} />
                                 </div>
                             )}

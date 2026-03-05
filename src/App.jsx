@@ -4,9 +4,9 @@ import ProtectedRoute from './components/ProtectedRoute';
 import Sidebar from './components/Sidebar';
 import LoginPage from './pages/LoginPage';
 import DashboardPage from './pages/DashboardPage';
-import ScanPage from './pages/ScanPage';
-import ValidatePage from './pages/ValidatePage';
+import QuickEntryPage from './pages/QuickEntryPage';
 import InvoicesPage from './pages/InvoicesPage';
+import RekapPage from './pages/RekapPage';
 import CustomersPage from './pages/CustomersPage';
 import ProductsPage from './pages/ProductsPage';
 import TargetsPage from './pages/TargetsPage';
@@ -33,18 +33,19 @@ function AppLayout() {
             <main className="main-content">
                 <Routes>
                     <Route path="/" element={<DashboardPage />} />
-                    <Route path="/scan" element={
-                        <ProtectedRoute allowedRoles={['admin']}><ScanPage /></ProtectedRoute>
-                    } />
-                    <Route path="/validate/:id" element={
-                        <ProtectedRoute allowedRoles={['admin']}><ValidatePage /></ProtectedRoute>
+                    <Route path="/entry" element={
+                        <ProtectedRoute allowedRoles={['admin']}><QuickEntryPage /></ProtectedRoute>
                     } />
                     <Route path="/invoices" element={<InvoicesPage />} />
+                    <Route path="/rekap" element={<RekapPage />} />
                     <Route path="/customers" element={<CustomersPage />} />
                     <Route path="/products" element={<ProductsPage />} />
                     <Route path="/targets" element={
                         <ProtectedRoute allowedRoles={['admin', 'pimpinan']}><TargetsPage /></ProtectedRoute>
                     } />
+                    {/* Redirect old scan/validate routes to entry */}
+                    <Route path="/scan" element={<Navigate to="/entry" replace />} />
+                    <Route path="/validate/*" element={<Navigate to="/entry" replace />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                 </Routes>
             </main>

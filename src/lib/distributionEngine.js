@@ -10,7 +10,7 @@ import { saveInvoice, upsertCustomer, upsertProduct, updateTargetProgress } from
  * 5. Update target progress
  */
 export async function distributeInvoice(invoiceData, imageBlob) {
-    const { customerName, invoiceNumber, invoiceDate, products, totalAmount } = invoiceData;
+    const { customerName, city, invoiceNumber, invoiceDate, products, totalAmount } = invoiceData;
 
     // 1. Upload image to Supabase Storage
     let imageUrl = '';
@@ -31,7 +31,7 @@ export async function distributeInvoice(invoiceData, imageBlob) {
 
     // 2. Save invoice to database
     const invoiceId = await saveInvoice({
-        customerName, invoiceNumber, invoiceDate,
+        customerName, city, invoiceNumber, invoiceDate,
         products, totalAmount, imageUrl
     });
 

@@ -77,7 +77,9 @@
 /* =====================================================
    Reset & Base
    ===================================================== */
-*, *::before, *::after {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
@@ -131,21 +133,38 @@ button {
   color: inherit;
 }
 
-input, select, textarea {
+input,
+select,
+textarea {
   font-family: inherit;
-  font-size: inherit;
+  font-size: 0.95rem;
   color: var(--text-primary);
   background: #FFFFFF;
-  border: 1px solid var(--border-glass);
+  border: 1px solid rgba(72, 169, 166, 0.35);
   border-radius: var(--radius-sm);
-  padding: var(--space-sm) var(--space-md);
+  padding: 10px 14px;
   transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
   outline: none;
 }
 
-input:focus, select:focus, textarea:focus {
+input:focus,
+select:focus,
+textarea:focus {
   border-color: var(--accent-blue);
   box-shadow: 0 0 0 3px var(--accent-blue-glow);
+}
+
+/* Read-only inputs look visually muted */
+input[readonly] {
+  background: #f8fafa;
+  color: var(--text-secondary);
+  border-color: transparent;
+  cursor: default;
+}
+
+input[readonly]:focus {
+  border-color: transparent;
+  box-shadow: none;
 }
 
 /* =====================================================
@@ -417,26 +436,51 @@ input:focus, select:focus, textarea:focus {
    Loading & Animations
    ===================================================== */
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.5;
+  }
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes slideInLeft {
-  from { opacity: 0; transform: translateX(-20px); }
-  to { opacity: 1; transform: translateX(0); }
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 @keyframes progressFill {
-  from { width: 0; }
+  from {
+    width: 0;
+  }
 }
 
 .animate-fade-in {
@@ -602,100 +646,35 @@ input:focus, select:focus, textarea:focus {
 }
 
 /* =====================================================
-   Scan Page
+   Quick Entry Page
    ===================================================== */
-.dropzone {
-  border: 2px dashed var(--border-glass);
-  border-radius: var(--radius-xl);
-  padding: var(--space-2xl);
-  text-align: center;
-  cursor: pointer;
-  transition: all var(--transition-normal);
-  position: relative;
-  overflow: hidden;
-}
-
-.dropzone::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background: var(--gradient-primary);
-  opacity: 0;
-  transition: opacity var(--transition-normal);
-}
-
-.dropzone:hover, .dropzone.active {
-  border-color: var(--accent-blue);
-}
-
-.dropzone:hover::before, .dropzone.active::before {
-  opacity: 0.05;
-}
-
-.dropzone-content {
-  position: relative;
-  z-index: 1;
-}
-
-.dropzone-content svg {
-  width: 56px;
-  height: 56px;
-  color: var(--accent-blue);
-  margin-bottom: var(--space-md);
-}
-
-.dropzone-content h3 {
-  font-size: 1.1rem;
-  margin-bottom: var(--space-sm);
-}
-
-.dropzone-content p {
-  color: var(--text-muted);
-  font-size: 0.85rem;
-}
-
-.image-preview {
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  border: 1px solid var(--border-glass);
-  max-height: 400px;
-}
-
-.image-preview img {
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
-  display: block;
-}
-
-/* =====================================================
-   Validate Page - Split Screen
-   ===================================================== */
-.validate-layout {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
+.quick-entry-layout {
+  display: flex;
+  flex-direction: column;
   gap: var(--space-lg);
-  min-height: calc(100vh - 140px);
 }
 
-.validate-image-panel {
-  position: sticky;
-  top: var(--space-xl);
-  height: fit-content;
-}
-
-.validate-image-panel img {
-  width: 100%;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-glass);
-}
-
-.validate-form-panel {
+.quick-entry-form {
   display: flex;
   flex-direction: column;
   gap: var(--space-md);
 }
 
+/* Hide number input spin buttons */
+.no-spin::-webkit-outer-spin-button,
+.no-spin::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.no-spin {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* =====================================================
+   Form Groups
+   ===================================================== */
 .form-group {
   display: flex;
   flex-direction: column;
@@ -716,53 +695,35 @@ input:focus, select:focus, textarea:focus {
   padding: 10px 14px;
 }
 
+/* =====================================================
+   Product Row
+   ===================================================== */
 .product-row {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr 1fr auto;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 0.7fr) minmax(0, 1fr) minmax(0, 0.6fr) minmax(0, 1.2fr) 30px;
   gap: var(--space-sm);
-  align-items: end;
+  align-items: center;
 }
 
-.product-row input {
+.product-row input,
+.product-row select {
   padding: 8px 12px;
   font-size: 0.85rem;
 }
 
+/* Product row header labels */
+.product-row-header {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 @media (max-width: 768px) {
-  .validate-layout {
+  .product-row {
     grid-template-columns: 1fr;
   }
-
-  .product-row {
-    grid-template-columns: 1fr 1fr;
-  }
-}
-
-/* =====================================================
-   OCR Progress
-   ===================================================== */
-.ocr-progress {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-lg);
-  padding: var(--space-2xl);
-}
-
-.ocr-progress-bar {
-  width: 100%;
-  max-width: 400px;
-  height: 6px;
-  background: var(--bg-glass);
-  border-radius: var(--radius-full);
-  overflow: hidden;
-}
-
-.ocr-progress-fill {
-  height: 100%;
-  background: var(--gradient-primary);
-  border-radius: var(--radius-full);
-  transition: width 0.3s ease;
 }
 
 /* =====================================================

@@ -1,24 +1,52 @@
 import { supabase } from './supabase';
 
 // =====================================================
-// INVOICES
+// INVOICES  (header + invoice_items)
 // =====================================================
+
+/**
+ * Save an invoice header + its line items to Supabase.
+ * 1. Insert into `invoices` (header)
+ * 2. Batch-insert into `invoice_items` (products)
+ */
 export async function saveInvoice(data) {
+    // 1. Insert invoice header
     const { data: invoice, error } = await supabase
         .from('invoices')
         .insert([{
             customer_name: data.customerName,
+            city: data.city || '',
             invoice_number: data.invoiceNumber,
             invoice_date: data.invoiceDate,
-            products: data.products,
             total_amount: data.totalAmount,
             image_url: data.imageUrl || '',
             status: 'confirmed',
+            source: data.source || 'ocr',
             created_at: new Date().toISOString()
         }])
         .select()
         .single();
     if (error) throw error;
+
+    // 2. Insert line items
+    const items = (data.products || []).map(p => ({
+        invoice_id: invoice.id,
+        product_name: p.name || '',
+        product_code: p.productCode || '',
+        qty: p.qty || 0,
+        unit: p.unit || 'dus',
+        unit_price: p.unitPrice || 0,
+        discount_percent: p.discountPercent || 0,
+        subtotal: p.subtotal || 0,
+    }));
+
+    if (items.length > 0) {
+        const { error: itemsErr } = await supabase
+            .from('invoice_items')
+            .insert(items);
+        if (itemsErr) console.error('Error saving invoice items:', itemsErr);
+    }
+
     return invoice.id;
 }
 
@@ -26,38 +54,74 @@ export function subscribeInvoices(callback) {
     // Initial load
     loadInvoices().then(callback);
 
-    // Real-time subscription
-    const channel = supabase
+    // Real-time: listen to both tables
+    const ch1 = supabase
         .channel('invoices-changes')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'invoices' }, () => {
             loadInvoices().then(callback);
         })
         .subscribe();
 
-    return () => supabase.removeChannel(channel);
+    const ch2 = supabase
+        .channel('invoice-items-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'invoice_items' }, () => {
+            loadInvoices().then(callback);
+        })
+        .subscribe();
+
+    return () => {
+        supabase.removeChannel(ch1);
+        supabase.removeChannel(ch2);
+    };
 }
 
 async function loadInvoices() {
-    const { data, error } = await supabase
+    // 1. Fetch all invoices
+    const { data: invoices, error } = await supabase
         .from('invoices')
         .select('*')
         .order('created_at', { ascending: false });
     if (error) { console.error(error); return []; }
-    return data.map(mapInvoice);
-}
+    if (!invoices || invoices.length === 0) return [];
 
-function mapInvoice(row) {
-    return {
+    // 2. Fetch all items in one query
+    const ids = invoices.map(i => i.id);
+    const { data: items, error: itemsErr } = await supabase
+        .from('invoice_items')
+        .select('*')
+        .in('invoice_id', ids)
+        .order('created_at', { ascending: true });
+    if (itemsErr) console.error(itemsErr);
+
+    // 3. Group items by invoice_id
+    const itemsByInvoice = {};
+    for (const item of (items || [])) {
+        if (!itemsByInvoice[item.invoice_id]) itemsByInvoice[item.invoice_id] = [];
+        itemsByInvoice[item.invoice_id].push({
+            name: item.product_name,
+            productCode: item.product_code || '',
+            qty: item.qty || 0,
+            unit: item.unit || 'dus',
+            unitPrice: item.unit_price || 0,
+            discountPercent: item.discount_percent || 0,
+            subtotal: item.subtotal || 0,
+        });
+    }
+
+    // 4. Map invoices with their items
+    return invoices.map(row => ({
         id: row.id,
         customerName: row.customer_name,
+        city: row.city || '',
         invoiceNumber: row.invoice_number,
         invoiceDate: row.invoice_date,
-        products: row.products || [],
+        products: itemsByInvoice[row.id] || [],
         totalAmount: row.total_amount,
         imageUrl: row.image_url,
         status: row.status,
+        source: row.source || 'ocr',
         createdAt: row.created_at
-    };
+    }));
 }
 
 // =====================================================

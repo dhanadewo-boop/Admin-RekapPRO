@@ -110,7 +110,7 @@ export function parseInvoiceText(rawText) {
     for (const pat of custPatterns) {
         const m = fullText.match(pat);
         if (m) {
-            customerName = cleanValue(m[1]);
+            customerName = cleanCustomerName(m[1]);
             break;
         }
     }
@@ -118,7 +118,7 @@ export function parseInvoiceText(rawText) {
         for (const line of lines) {
             const m = line.match(/\b((?:PT|CV|Toko|UD|TB|PD)\.?\s+[A-Za-z][A-Za-z\s.]+)/i);
             if (m && !line.toLowerCase().includes('kalatham') && !line.toLowerCase().includes('formulir')) {
-                customerName = cleanValue(m[1]);
+                customerName = cleanCustomerName(m[1]);
                 break;
             }
         }
@@ -192,10 +192,13 @@ export function parseInvoiceText(rawText) {
     const seenProducts = new Set(); // Deduplicate by name
 
     const addProduct = (name, qty, unit, unitPrice, lineTotal) => {
+        // Filter out junk: name too short, or zero/missing price with zero total
+        if (!name || name.length <= 2) return;
+        if (unitPrice <= 0 && lineTotal <= 0) return;
         const key = name.toLowerCase().replace(/\s+/g, '');
         if (seenProducts.has(key)) return;
         seenProducts.add(key);
-        products.push({ name, qty, unit, unitPrice, subtotal: lineTotal, discount: 0, discountAmount: 0, netTotal: lineTotal });
+        products.push({ name, qty, unit, unitPrice, subtotal: lineTotal, discountPercent: 0 });
     };
 
     // Strategy A: SPB format with kode barang — broadened pattern
@@ -422,33 +425,36 @@ export function parseInvoiceText(rawText) {
                 const hintWords = d.hint.split(/\s+/);
                 const mainHint = hintWords[0];
                 if (pNameLower.includes(mainHint)) {
-                    p.discount = d.discount;
+                    p.discountPercent = d.discount;
                     break;
                 }
             }
-            if (!p.discount) p.discount = 0;
+            if (!p.discountPercent) p.discountPercent = 0;
         }
         discount = 0;
     } else {
         // Fallback: try to find a single global discount
+        // Broadened patterns to catch "Disc 4%", "Diskon : 4%", "Discount: 4%", "disc. 4 %" etc.
         const globalDiscPatterns = [
-            /disc(?:ount)?\s+.*?(\d+)\s*%/i,
-            /diskon\s+.*?(\d+)\s*%/i,
-            /potongan\s+.*?(\d+)\s*%/i,
+            /dis[ck](?:on|ount|\.)?\s*[:;]?\s*(\d+)\s*%/i,
+            /potongan\s*[:;]?\s*(\d+)\s*%/i,
+            /dis[ck](?:on|ount|\.)?\s+.*?(\d+)\s*%/i,
         ];
         for (const pat of globalDiscPatterns) {
             const m = fullText.match(pat);
             if (m) {
                 discount = parseInt(m[1]);
-                for (const p of products) {
-                    p.discount = discount;
+                if (discount > 0 && discount <= 100) {
+                    for (const p of products) {
+                        p.discountPercent = discount;
+                    }
+                    break;
                 }
-                break;
             }
         }
         if (discount === 0) {
             for (const p of products) {
-                p.discount = 0;
+                p.discountPercent = 0;
             }
         }
     }
@@ -460,18 +466,26 @@ export function parseInvoiceText(rawText) {
 
     // Subtotal from products (before any discount)
     if (products.length > 0) {
-        subtotalBeforeDisc = products.reduce((sum, p) => sum + (p.subtotal || 0), 0);
+        subtotalBeforeDisc = products.reduce((sum, p) => {
+            // subtotal at this point is the gross line total (qty * unitPrice)
+            return sum + (p.subtotal || 0);
+        }, 0);
     }
 
-    // Calculate per-product discount amounts and net totals
+    // Calculate per-product discount amounts, then update subtotal to net amount
     for (const p of products) {
-        const pDisc = p.discount || 0;
-        p.discountAmount = Math.round((p.subtotal || 0) * pDisc / 100);
-        p.netTotal = (p.subtotal || 0) - p.discountAmount;
+        const pDisc = p.discountPercent || 0;
+        const grossAmount = (p.qty || 0) * (p.unitPrice || 0);
+        const discAmt = Math.round(grossAmount * pDisc / 100);
+        // subtotal becomes the NET amount (after discount) — this is what RekapPage displays
+        p.subtotal = grossAmount - discAmt;
     }
 
     // Total discount = sum of all per-product discounts
-    discountAmount = products.reduce((sum, p) => sum + (p.discountAmount || 0), 0);
+    discountAmount = products.reduce((sum, p) => {
+        const grossAmount = (p.qty || 0) * (p.unitPrice || 0);
+        return sum + Math.round(grossAmount * (p.discountPercent || 0) / 100);
+    }, 0);
 
     // Grand total = subtotal - total discount
     totalAmount = subtotalBeforeDisc - discountAmount;
@@ -559,6 +573,23 @@ function cleanValue(str) {
         .replace(/[|_]+$/g, '')
         .replace(/^\s*[:;]\s*/, '')
         .trim();
+}
+
+/**
+ * Clean customer name — strip address, dashes, "Alamat:" etc.
+ */
+function cleanCustomerName(raw) {
+    let name = cleanValue(raw);
+    // Strip anything after em-dash, long-dash, or "Alamat"
+    name = name.split(/\s*[—–-]{2,}\s*/)[0];
+    name = name.split(/\s*—\s*/)[0];
+    name = name.replace(/\s*[-–—]\s*Alamat\s*[:;]?.*/i, '');
+    name = name.replace(/\s*Alamat\s*[:;]?.*/i, '');
+    // Strip trailing Jl/Jln/Jalan address
+    name = name.replace(/\s*(?:Jl|Jln|Jalan)\.?\s+.*/i, '');
+    // Remove leading dashes
+    name = name.replace(/^[—–\-\s]+/, '');
+    return name.trim();
 }
 
 /**

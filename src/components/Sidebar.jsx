@@ -1,15 +1,15 @@
 import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
-    LayoutDashboard, ScanLine, FileText, Users, Package,
+    LayoutDashboard, Zap, FileText, Users, Package,
     Target, LogOut, ChevronLeft, Menu
 } from 'lucide-react';
 import { useState } from 'react';
 
 const navItems = [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard', roles: ['admin', 'pimpinan', 'marketing'] },
-    { to: '/scan', icon: ScanLine, label: 'Scan Invoice', roles: ['admin'] },
-    { to: '/invoices', icon: FileText, label: 'Rekap Invoice', roles: ['admin', 'pimpinan', 'marketing'] },
+    { to: '/entry', icon: Zap, label: 'Quick Entry', roles: ['admin'] },
+    { to: '/rekap', icon: FileText, label: 'Rekap Penjualan', roles: ['admin', 'pimpinan', 'marketing'] },
     { to: '/customers', icon: Users, label: 'Rekap Customer', roles: ['admin', 'pimpinan', 'marketing'] },
     { to: '/products', icon: Package, label: 'Rekap Produk', roles: ['admin', 'pimpinan', 'marketing'] },
     { to: '/targets', icon: Target, label: 'Target Customer', roles: ['admin', 'pimpinan'] },
