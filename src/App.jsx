@@ -10,6 +10,7 @@ import RekapPage from './pages/RekapPage';
 import CustomersPage from './pages/CustomersPage';
 import ProductsPage from './pages/ProductsPage';
 import TargetsPage from './pages/TargetsPage';
+import RekapTarget from './pages/RekapTarget';
 
 function AppLayout() {
     const { user, loading } = useAuth();
@@ -33,6 +34,10 @@ function AppLayout() {
             <main className="main-content">
                 <Routes>
                     <Route path="/" element={<DashboardPage />} />
+
+                    {/* Halaman Analitik Baru */}
+                    <Route path="/analitik" element={<RekapTarget />} />
+
                     <Route path="/entry" element={
                         <ProtectedRoute allowedRoles={['admin']}><QuickEntryPage /></ProtectedRoute>
                     } />
@@ -43,7 +48,6 @@ function AppLayout() {
                     <Route path="/targets" element={
                         <ProtectedRoute allowedRoles={['admin', 'pimpinan']}><TargetsPage /></ProtectedRoute>
                     } />
-                    {/* Redirect old scan/validate routes to entry */}
                     <Route path="/scan" element={<Navigate to="/entry" replace />} />
                     <Route path="/validate/*" element={<Navigate to="/entry" replace />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
