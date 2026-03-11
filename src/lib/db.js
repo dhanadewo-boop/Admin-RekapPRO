@@ -5,6 +5,24 @@ import { supabase } from './supabase';
 // =====================================================
 
 /**
+ * Wipe existing records and reset aggregates.
+ */
+export async function resetAllData() {
+    // Call the RPC function if created via the SQL script
+    const { error } = await supabase.rpc('reset_all_data');
+    if (error) {
+        console.warn('RPC reset_all_data failed or missing, falling back to manual clear:', error);
+        
+        // Manual fallback wiping (requires proper RLS policies)
+        await supabase.from('invoices').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+        
+        await supabase.from('customers').update({ total_transaksi: 0, jumlah_invoice: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
+        await supabase.from('products').update({ total_sold: 0, total_revenue: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
+        await supabase.from('targets').update({ current_amount: 0 }).neq('id', '00000000-0000-0000-0000-000000000000');
+    }
+}
+
+/**
  * Save an invoice header + its line items to Supabase.
  * 1. Insert into `invoices` (header)
  * 2. Batch-insert into `invoice_items` (products)

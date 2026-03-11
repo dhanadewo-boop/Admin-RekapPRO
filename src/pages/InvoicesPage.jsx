@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { subscribeInvoices } from '../lib/db';
+import { exportRekapToExcel } from '../lib/excelExport';
 import DataTable from '../components/DataTable';
-import { FileText } from 'lucide-react';
+import { FileText, Download } from 'lucide-react';
 
 export default function InvoicesPage() {
     const [invoices, setInvoices] = useState([]);
@@ -99,9 +100,19 @@ export default function InvoicesPage() {
 
     return (
         <div className="animate-fade-in">
-            <div className="page-header">
-                <h1>Rekap Invoice</h1>
-                <p>Semua invoice yang telah diproses dan diverifikasi</p>
+            <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 16 }}>
+                <div>
+                    <h1>Rekap Invoice</h1>
+                    <p>Semua invoice yang telah diproses dan diverifikasi</p>
+                </div>
+                <button
+                    className="btn btn-success"
+                    onClick={() => exportRekapToExcel(invoices)}
+                    disabled={invoices.length === 0}
+                    style={{ padding: '8px 16px', fontSize: '0.85rem' }}
+                >
+                    <Download size={16} /> Export Excel
+                </button>
             </div>
 
             {/* Summary */}

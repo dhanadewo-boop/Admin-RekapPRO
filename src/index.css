@@ -765,3 +765,21 @@ input[readonly]:focus {
   color: white;
   box-shadow: 0 4px 20px rgba(231, 76, 60, 0.35);
 }
+
+/* =====================================================
+   Keyboard Shortcuts (Kbd)
+   ===================================================== */
+.kbd {
+  display: inline-block;
+  padding: 3px 6px;
+  font-size: 0.7rem;
+  font-family: inherit;
+  font-weight: 700;
+  color: var(--text-secondary);
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  box-shadow: 0 2px 0 #cbd5e1;
+  margin: 0 4px;
+  transform: translateY(-1px);
+}

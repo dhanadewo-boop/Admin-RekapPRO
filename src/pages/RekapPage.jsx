@@ -1,8 +1,13 @@
-import { useState, useEffect, useMemo } from 'react';
-import { subscribeInvoices } from '../lib/db';
-import { exportRekapToExcel } from '../lib/excelExport';
+import { useState, useEffect, useMemo, useRef } from 'react';
+import * as XLSX from 'xlsx';
 import {
-    FileText, Download, Search, Filter, X,
+    subscribeInvoices, saveInvoice, upsertCustomer,
+    upsertProduct, updateTargetProgress, resetAllData
+} from '../lib/db';
+import { exportRekapToExcel } from '../lib/excelExport';
+import { matchProduct } from '../lib/masterData';
+import {
+    FileText, Download, UploadCloud, Search, Filter, X,
     ChevronDown, ChevronUp, Calendar, Users, Package,
     TrendingUp, RefreshCw, Check, AlertCircle
 } from 'lucide-react';
@@ -18,6 +23,15 @@ export default function RekapPage() {
     const [expandedIds, setExpandedIds] = useState(new Set());
     const [page, setPage] = useState(0);
     const perPage = 10;
+
+    // Excel import states
+    const [showImportModal, setShowImportModal] = useState(false);
+    const [importFile, setImportFile] = useState(null);
+    const [wipeData, setWipeData] = useState(false);
+    const [isImporting, setIsImporting] = useState(false);
+    const [importProgress, setImportProgress] = useState(0);
+    const [importStatus, setImportStatus] = useState({ type: '', msg: '' });
+    const fileInputRef = useRef(null);
 
     useEffect(() => {
         const unsub = subscribeInvoices(setInvoices);
@@ -128,9 +142,305 @@ export default function RekapPage() {
 
     const formatRp = (n) => `Rp ${(n || 0).toLocaleString('id-ID')}`;
 
+    // ─── Excel Import Handlers ───
+    const handleFileSelect = (e) => {
+        if (e.target.files && e.target.files.length > 0) {
+            setImportFile(e.target.files[0]);
+            setImportStatus({ type: '', msg: '' });
+        }
+    };
+
+    const processImport = async () => {
+        if (!importFile) {
+            setImportStatus({ type: 'error', msg: 'Pilih file Excel terlebih dahulu.' });
+            return;
+        }
+
+        setIsImporting(true);
+        setImportProgress(0);
+        setImportStatus({ type: 'info', msg: 'Membaca file Excel...' });
+
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheetNames = workbook.SheetNames;
+                let invoicesList = [];
+
+                const isLegacyRekap = sheetNames.some(name => ['2023', '2024', '2025'].includes(name));
+
+                if (isLegacyRekap) {
+                    setImportStatus({ type: 'info', msg: 'Format Rekap Legacy terdeteksi. Merangkum data bulanan...' });
+                    sheetNames.forEach(sheetName => {
+                        const year = parseInt(sheetName);
+                        if (isNaN(year)) return;
+                        const worksheet = workbook.Sheets[sheetName];
+                        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: null });
+
+                        for (let i = 1; i < jsonData.length; i++) {
+                            const row = jsonData[i] || [];
+                            if (!row || !row[0]) continue;
+                            const productName = String(row[0]).trim();
+                            if (productName === '' || productName.toUpperCase().includes('PUPUK DAUN')) continue;
+
+                            const matchedData = matchProduct(productName, 0.4);
+                            const officialData = matchedData?.match;
+                            const isAmountData = isNaN(parseFloat(row[11])) && parseFloat(row[11]) > 500; // rough heuristic if legacy file holds amounts instead of qty
+
+                            for (let m = 0; m < 12; m++) {
+                                const valIndex = 7 + (m * 4);
+                                if (row.length > valIndex && !isNaN(parseFloat(row[valIndex]))) {
+                                    const val = parseFloat(row[valIndex]);
+                                    if (val > 0) {
+                                        const officialPrice = officialData?.price || val; // in legacy, val is usually the amount. If we need qty, we divide. But legacy is amount-based. Wait, let's keep legacy intact as it's specifically "Rangkuman" values unless user explicitly wants prices injected into legacy too. Actually user showed screenshot of standard parsing. Let's apply it carefully.
+                                        
+                                        const invDate = `${year}-${String(m + 1).padStart(2, '0')}-28`;
+                                        const cleanCode = productName.substring(0, 5).replace(/[^a-zA-Z]/g, '').toUpperCase();
+                                        const invoiceNumber = `IMP-${year}${String(m + 1).padStart(2, '0')}-${cleanCode}-${Math.floor(Math.random() * 1000)}`;
+
+                                        invoicesList.push({
+                                            customerName: 'DATA IMPOR',
+                                            city: 'Impor',
+                                            invoiceNumber: invoiceNumber,
+                                            invoiceDate: invDate,
+                                            products: [{
+                                                name: productName,
+                                                qty: 1,
+                                                unit: 'aggregate',
+                                                unitPrice: val,
+                                                discountPercent: 0,
+                                                subtotal: val
+                                            }],
+                                            totalAmount: val,
+                                            source: 'excel_import'
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    });
+                } else {
+                    const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { raw: false });
+                    const invoicesMap = {};
+
+                    jsonData.forEach(row => {
+                        const rowKeys = Object.keys(row);
+                        const getDate = () => row[rowKeys.find(k => k?.toLowerCase().includes('tanggal'))];
+                        const getSpb = () => row[rowKeys.find(k => k?.toLowerCase().includes('spb'))];
+                        const getCust = () => row[rowKeys.find(k => k?.toLowerCase().includes('customer'))];
+                        const getCity = () => row[rowKeys.find(k => k?.toLowerCase().includes('area') || k?.toLowerCase().includes('kota'))];
+                        const getProd = () => row[rowKeys.find(k => k?.toLowerCase().includes('barang'))];
+                        const getQty = () => {
+                            const val = row[rowKeys.find(k => k?.toLowerCase() === 'qty')];
+                            if (val === undefined || val === null) return 0;
+                            return parseFloat(val.toString().replace(/[^0-9.-]+/g, '')) || 0;
+                        };
+                        const getPrice = () => {
+                            const val = row[rowKeys.find(k => k?.toLowerCase().includes('harga'))];
+                            if (val === undefined || val === null) return 0;
+                            return parseFloat(val.toString().replace(/[^0-9.-]+/g, '')) || 0;
+                        };
+                        const getDisc = () => {
+                            const val = row[rowKeys.find(k => k?.toLowerCase().includes('diskon'))];
+                            if (val === undefined || val === null) return 0;
+                            return parseFloat(val.toString().replace(/[^0-9.-]+/g, '')) || 0;
+                        };
+                        const getSub = () => {
+                            const val = row[rowKeys.find(k => k?.toLowerCase().includes('subtotal'))];
+                            if (val === undefined || val === null) return 0;
+                            return parseFloat(val.toString().replace(/[^0-9.-]+/g, '')) || 0;
+                        };
+
+                        const spb = getSpb()?.toString().trim();
+                        if (!spb) return;
+
+                        if (!invoicesMap[spb]) {
+                            invoicesMap[spb] = {
+                                customerName: getCust()?.toString().trim() || 'Unknown',
+                                city: getCity()?.toString().trim() || '',
+                                invoiceNumber: spb,
+                                invoiceDate: getDate()?.toString().trim() || '',
+                                products: [],
+                                totalAmount: 0,
+                                source: 'excel_import'
+                            };
+                        }
+
+                        const parsedName = getProd()?.toString().trim() || '';
+                        const parsedQty = getQty();
+                        const parsedDisc = getDisc();
+                        let finalPrice = getPrice();
+                        let finalSub = getSub();
+
+                        // Cross-reference with masterData.js for accurate prices
+                        const matched = matchProduct(parsedName, 0.4);
+                        if (matched?.match?.price > 0) {
+                            finalPrice = matched.match.price;
+                            // Recalculate subtotal based on official price
+                            finalSub = finalPrice * parsedQty * (1 - (parsedDisc / 100));
+                        }
+
+                        invoicesMap[spb].products.push({
+                            name: parsedName,
+                            qty: parsedQty,
+                            unit: 'dus',
+                            unitPrice: finalPrice,
+                            discountPercent: parsedDisc,
+                            subtotal: finalSub
+                        });
+                        invoicesMap[spb].totalAmount += finalSub;
+                    });
+                    invoicesList = Object.values(invoicesMap);
+                }
+
+                if (invoicesList.length === 0) {
+                    throw new Error("Tidak ada data valid yang ditemukan dalam file.");
+                }
+
+                if (wipeData) {
+                    setImportStatus({ type: 'info', msg: 'Menghapus data lama (Wipe Data)...' });
+                    await resetAllData();
+                }
+
+                setImportStatus({ type: 'info', msg: `Menyimpan ${invoicesList.length} invoice ke database...` });
+
+                let successCount = 0;
+                for (let i = 0; i < invoicesList.length; i++) {
+                    const inv = invoicesList[i];
+                    try {
+                        await saveInvoice(inv);
+                        await upsertCustomer(inv.customerName, inv.totalAmount);
+                        for (const product of inv.products) {
+                            await upsertProduct(product.name, product.qty, product.unitPrice);
+                        }
+                        await updateTargetProgress(inv.customerName, inv.totalAmount);
+                        successCount++;
+                    } catch (err) {
+                        console.error(`Gagal import SPB ${inv.invoiceNumber}:`, err);
+                    }
+                    setImportProgress(Math.round(((i + 1) / invoicesList.length) * 100));
+                }
+
+                setImportStatus({ type: 'success', msg: `Berhasil import ${successCount} dari ${invoicesList.length} invoice!` });
+                setTimeout(() => {
+                    setShowImportModal(false);
+                    setImportFile(null);
+                    setImportStatus({ type: '', msg: '' });
+                    setWipeData(false);
+                }, 2500);
+
+            } catch (err) {
+                console.error(err);
+                setImportStatus({ type: 'error', msg: 'Gagal memproses file: ' + err.message });
+            } finally {
+                setIsImporting(false);
+            }
+        };
+        reader.readAsArrayBuffer(importFile);
+    };
+
+    const closeImportModal = () => {
+        if (isImporting) return;
+        setShowImportModal(false);
+        setImportFile(null);
+        setImportStatus({ type: '', msg: '' });
+    };
+
     // ─── Render ───
     return (
         <div className="animate-fade-in">
+            {/* Import Modal */}
+            {showImportModal && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)',
+                    zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    padding: 20
+                }}>
+                    <div className="glass-card" style={{
+                        maxWidth: 450, width: '100%', position: 'relative',
+                        animation: 'slideUp 0.3s ease'
+                    }}>
+                        {!isImporting && (
+                            <button onClick={closeImportModal} style={{
+                                position: 'absolute', top: 16, right: 16,
+                                background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer'
+                            }}>
+                                <X size={20} />
+                            </button>
+                        )}
+                        <h2 style={{ fontSize: '1.2rem', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <UploadCloud size={20} /> Import Data Rekap
+                        </h2>
+                        <input 
+                            type="file" 
+                            accept=".xlsx, .xls"
+                            ref={fileInputRef}
+                            onChange={handleFileSelect}
+                            style={{ display: 'none' }}
+                        />
+                        <button 
+                            className="btn btn-secondary" 
+                            onClick={() => fileInputRef.current.click()}
+                            disabled={isImporting}
+                            style={{ width: '100%', justifyContent: 'center', marginBottom: 16, padding: '12px' }}
+                        >
+                            {importFile ? importFile.name : 'Pilih File Excel...'}
+                        </button>
+                        
+                        <div style={{
+                            display: 'flex', alignItems: 'center', gap: 10, 
+                            marginBottom: 20, padding: 12, borderRadius: 'var(--radius-sm)',
+                            background: wipeData ? 'var(--accent-rose-glow)' : 'var(--bg-glass)',
+                            transition: 'background 0.3s ease'
+                        }}>
+                            <input 
+                                type="checkbox" 
+                                id="wipeDataCheckbox" 
+                                checked={wipeData}
+                                onChange={(e) => setWipeData(e.target.checked)}
+                                disabled={isImporting}
+                                style={{ accentColor: 'var(--accent-rose)', width: 16, height: 16 }}
+                            />
+                            <label htmlFor="wipeDataCheckbox" style={{ fontSize: '0.85rem', color: wipeData ? 'var(--accent-rose)' : 'var(--text-secondary)', cursor: 'pointer' }}>
+                                <strong>Hapus Semua Data Terlebih Dahulu</strong> (Wipe & Replace)
+                            </label>
+                        </div>
+
+                        <button 
+                            className="btn btn-success" 
+                            onClick={processImport}
+                            disabled={isImporting || !importFile}
+                            style={{ width: '100%', justifyContent: 'center' }}
+                        >
+                            {isImporting ? 'Memproses...' : 'Mulai Import'}
+                        </button>
+
+                        {isImporting && (
+                            <div style={{ marginTop: 16 }}>
+                                <div style={{ width: '100%', height: 6, background: 'var(--border-glass)', borderRadius: 3, overflow: 'hidden' }}>
+                                    <div style={{ height: '100%', background: 'var(--accent-emerald)', width: `${importProgress}%`, transition: 'width 0.2s' }}></div>
+                                </div>
+                                <p style={{ textAlign: 'center', fontSize: '0.75rem', marginTop: 4, color: 'var(--text-muted)' }}>{importProgress}% Selesai</p>
+                            </div>
+                        )}
+
+                        {importStatus.msg && (
+                            <div style={{
+                                marginTop: 16, padding: '12px', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', fontWeight: 500,
+                                display: 'flex', alignItems: 'center', gap: 8,
+                                background: importStatus.type === 'success' ? 'var(--accent-emerald-glow)' : importStatus.type === 'error' ? 'var(--accent-rose-glow)' : 'var(--accent-blue-glow)',
+                                color: importStatus.type === 'success' ? 'var(--accent-emerald)' : importStatus.type === 'error' ? 'var(--accent-rose)' : 'var(--accent-blue)',
+                            }}>
+                                {importStatus.type === 'success' ? <Check size={16} /> : <AlertCircle size={16} />}
+                                {importStatus.msg}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {/* Header */}
             <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
                 <div>
@@ -138,6 +448,14 @@ export default function RekapPage() {
                     <p>Data penjualan dikelompokkan per invoice</p>
                 </div>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <button
+                        className="btn btn-secondary"
+                        onClick={() => setShowImportModal(true)}
+                        style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}
+                    >
+                        <UploadCloud size={16} />
+                        Import Excel
+                    </button>
                     <button
                         className="btn btn-primary"
                         onClick={handleExport}

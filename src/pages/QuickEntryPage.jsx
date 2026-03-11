@@ -279,7 +279,12 @@ export default function QuickEntryPage() {
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
                             <div className="form-group">
-                                <label>Nama Customer <span style={{ fontWeight: 400, fontSize: '0.7rem', color: 'var(--text-muted)' }}>(ketik lalu Enter)</span></label>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    Nama Customer
+                                    <span style={{ fontWeight: 400, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                        (ketik lalu <kbd className="kbd">↵ Enter</kbd>)
+                                    </span>
+                                </label>
                                 <IlikeInput
                                     inputRef={customerNameRef}
                                     value={formData.customerName}
@@ -324,10 +329,10 @@ export default function QuickEntryPage() {
                                     />
                                 </div>
                                 <div className="form-group">
-                                    <label>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                         Tanggal
-                                        <span style={{ fontWeight: 400, fontSize: '0.65rem', color: 'var(--text-muted)', marginLeft: 4 }}>
-                                            (ketik 26-2 lalu Enter)
+                                        <span style={{ fontWeight: 400, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                            (cth: 26-2 <kbd className="kbd">↵ Enter</kbd>)
                                         </span>
                                     </label>
                                     <input
@@ -352,19 +357,26 @@ export default function QuickEntryPage() {
                     <div className="glass-card">
                         <div style={{
                             display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                            marginBottom: 16
+                            marginBottom: 20, flexWrap: 'wrap', gap: '12px'
                         }}>
-                            <h3 style={{
-                                fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)',
-                                textTransform: 'uppercase', letterSpacing: '0.05em',
-                                display: 'flex', alignItems: 'center', gap: 6
-                            }}>
-                                📦 Daftar Produk <span style={{ fontWeight: 400, fontSize: '0.7rem', color: 'var(--text-muted)' }}>(Enter = pilih, Shift+Enter = pilih + tambah baris)</span>
-                            </h3>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                                <h3 style={{
+                                    fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)',
+                                    textTransform: 'uppercase', letterSpacing: '0.05em',
+                                    display: 'flex', alignItems: 'center', gap: 6, margin: 0
+                                }}>
+                                    📦 Daftar Produk
+                                </h3>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'var(--bg-glass)', padding: '6px 12px', borderRadius: 'var(--radius-sm)' }}>
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}><kbd className="kbd">↵ Enter</kbd> Pilih Data</span>
+                                    <span style={{ color: 'var(--border-glass)' }}>|</span>
+                                    <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}><kbd className="kbd">⇧ Shift</kbd> + <kbd className="kbd">↵ Enter</kbd> Baris Baru</span>
+                                </div>
+                            </div>
                             <button className="btn btn-secondary" onClick={addProduct} style={{
-                                padding: '6px 12px', fontSize: '0.8rem'
+                                padding: '6px 16px', fontSize: '0.8rem'
                             }}>
-                                <Plus size={14} /> Tambah
+                                <Plus size={14} /> Tambah Baris
                             </button>
                         </div>
 
@@ -548,7 +560,7 @@ export default function QuickEntryPage() {
                     </div>
                 </div>
             </div>
-        </div>
+        </div >
     );
 }
 

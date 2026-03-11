@@ -1,8 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { subscribeStats, subscribeInvoices } from '../lib/db';
+import { subscribeStats, subscribeInvoices, subscribeProducts } from '../lib/db';
 import StatCard from '../components/StatCard';
-import { FileText, Users, Package, Target, TrendingUp, Clock } from 'lucide-react';
+import { FileText, Users, Package, Target, TrendingUp, Clock, PieChart as PieIcon } from 'lucide-react';
+import {
+    AreaChart, Area, PieChart, Pie, Cell, XAxis, YAxis,
+    CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, Legend
+} from 'recharts';
 
 export default function DashboardPage() {
     const { user } = useAuth();
@@ -12,13 +16,56 @@ export default function DashboardPage() {
         totalProductsSold: 0, totalTargets: 0, targetsCompleted: 0
     });
     const [recentInvoices, setRecentInvoices] = useState([]);
+    const [monthlyData, setMonthlyData] = useState([]);
+    const [topProducts, setTopProducts] = useState([]);
+
+    const COLORS = ['#48A9A6', '#5B9EA6', '#F2994A', '#2ECC71', '#E74C3C'];
 
     useEffect(() => {
         const unsubStats = subscribeStats(setStats);
+
         const unsubInv = subscribeInvoices((invoices) => {
             setRecentInvoices(invoices.slice(0, 5));
+
+            const currentYear = new Date().getFullYear();
+            const monthly = Array(12).fill(0);
+            const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+
+            invoices.forEach(inv => {
+                if (inv.invoiceDate && inv.invoiceDate.includes(currentYear.toString())) {
+                    const parts = inv.invoiceDate.split('-');
+                    if (parts.length === 3) {
+                        const mIndex = MONTH_NAMES.indexOf(parts[1]);
+                        if (mIndex !== -1) {
+                            monthly[mIndex] += (inv.totalAmount || 0);
+                        }
+                    }
+                }
+            });
+
+            const formattedMonthly = MONTH_NAMES.map((m, i) => ({
+                name: m,
+                omset: monthly[i]
+            }));
+            setMonthlyData(formattedMonthly);
         });
-        return () => { unsubStats(); unsubInv(); };
+
+        const unsubProd = subscribeProducts((prods) => {
+            const sorted = [...prods].sort((a, b) => (b.totalRevenue || 0) - (a.totalRevenue || 0));
+            const top = sorted.slice(0, 4);
+            const others = sorted.slice(4).reduce((sum, p) => sum + (p.totalRevenue || 0), 0);
+
+            const pieData = top.map(p => ({
+                name: p.name,
+                value: p.totalRevenue || 0
+            }));
+            if (others > 0) {
+                pieData.push({ name: 'Lainnya', value: others });
+            }
+            setTopProducts(pieData.filter(d => d.value > 0));
+        });
+
+        return () => { unsubStats(); unsubInv(); unsubProd(); };
     }, []);
 
     const formatRp = (n) => `Rp ${(n || 0).toLocaleString('id-ID')}`;
@@ -63,6 +110,77 @@ export default function DashboardPage() {
                     color="var(--accent-amber)"
                     glowColor="var(--accent-amber-glow)"
                 />
+            </div>
+
+            {/* Charts Section */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', gap: 'var(--space-md)', marginBottom: 'var(--space-xl)' }}>
+                {/* Tren Omset Bulanan */}
+                <div className="glass-card">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+                        <TrendingUp size={18} color="var(--accent-blue)" />
+                        <h2 style={{ fontSize: '1rem', fontWeight: 600 }}>Tren Omset ({new Date().getFullYear()})</h2>
+                    </div>
+                    <div style={{ width: '100%', height: 300 }}>
+                        <ResponsiveContainer>
+                            <AreaChart data={monthlyData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                                <defs>
+                                    <linearGradient id="colorOmset" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="var(--accent-blue)" stopOpacity={0.3} />
+                                        <stop offset="95%" stopColor="var(--accent-blue)" stopOpacity={0} />
+                                    </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-glass)" />
+                                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: 'var(--text-muted)' }} />
+                                <YAxis
+                                    axisLine={false} tickLine={false}
+                                    tick={{ fontSize: 12, fill: 'var(--text-muted)' }}
+                                    tickFormatter={(val) => `Rp${(val / 1000000).toFixed(0)}M`}
+                                />
+                                <RechartsTooltip
+                                    formatter={(value) => formatRp(value)}
+                                    contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: 'var(--shadow-md)', background: 'var(--bg-card)' }}
+                                />
+                                <Area type="monotone" dataKey="omset" stroke="var(--accent-blue)" strokeWidth={3} fillOpacity={1} fill="url(#colorOmset)" />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
+
+                {/* Kontribusi Top Produk */}
+                <div className="glass-card">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 20 }}>
+                        <PieIcon size={18} color="var(--accent-purple)" />
+                        <h2 style={{ fontSize: '1rem', fontWeight: 600 }}>Kontribusi Top Produk</h2>
+                    </div>
+                    <div style={{ width: '100%', height: 300, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        {topProducts.length > 0 ? (
+                            <ResponsiveContainer>
+                                <PieChart>
+                                    <Pie
+                                        data={topProducts}
+                                        cx="50%"
+                                        cy="50%"
+                                        innerRadius={60}
+                                        outerRadius={100}
+                                        paddingAngle={5}
+                                        dataKey="value"
+                                    >
+                                        {topProducts.map((entry, index) => (
+                                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                        ))}
+                                    </Pie>
+                                    <RechartsTooltip
+                                        formatter={(value) => formatRp(value)}
+                                        contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: 'var(--shadow-md)', background: 'var(--bg-card)' }}
+                                    />
+                                    <Legend verticalAlign="bottom" height={36} iconType="circle" wrapperStyle={{ fontSize: '0.8rem' }} />
+                                </PieChart>
+                            </ResponsiveContainer>
+                        ) : (
+                            <p style={{ color: 'var(--text-muted)' }}>Belum ada data penjualan produk</p>
+                        )}
+                    </div>
+                </div>
             </div>
 
             {/* Recent Activity */}

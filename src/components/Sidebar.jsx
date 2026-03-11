@@ -2,17 +2,19 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
     LayoutDashboard, Zap, FileText, Users, Package,
-    Target, LogOut, ChevronLeft, Menu
+    Target, LogOut, ChevronLeft, Menu, BarChart2, History
 } from 'lucide-react';
 import { useState } from 'react';
 
 const navItems = [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard', roles: ['admin', 'pimpinan', 'marketing'] },
+    { to: '/analitik', icon: BarChart2, label: 'Kontribusi', roles: ['admin', 'pimpinan', 'marketing'] },
     { to: '/entry', icon: Zap, label: 'Quick Entry', roles: ['admin'] },
     { to: '/rekap', icon: FileText, label: 'Rekap Penjualan', roles: ['admin', 'pimpinan', 'marketing'] },
     { to: '/customers', icon: Users, label: 'Rekap Customer', roles: ['admin', 'pimpinan', 'marketing'] },
     { to: '/products', icon: Package, label: 'Rekap Produk', roles: ['admin', 'pimpinan', 'marketing'] },
     { to: '/targets', icon: Target, label: 'Target Customer', roles: ['admin', 'pimpinan'] },
+    { to: '/history', icon: History, label: 'Data Historis', roles: ['admin', 'pimpinan'] },
 ];
 
 const roleLabels = {

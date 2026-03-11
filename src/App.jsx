@@ -11,6 +11,7 @@ import CustomersPage from './pages/CustomersPage';
 import ProductsPage from './pages/ProductsPage';
 import TargetsPage from './pages/TargetsPage';
 import RekapTarget from './pages/RekapTarget';
+import HistoricalDataPage from './pages/HistoricalDataPage';
 
 function AppLayout() {
     const { user, loading } = useAuth();
@@ -47,6 +48,9 @@ function AppLayout() {
                     <Route path="/products" element={<ProductsPage />} />
                     <Route path="/targets" element={
                         <ProtectedRoute allowedRoles={['admin', 'pimpinan']}><TargetsPage /></ProtectedRoute>
+                    } />
+                    <Route path="/history" element={
+                        <ProtectedRoute allowedRoles={['admin', 'pimpinan']}><HistoricalDataPage /></ProtectedRoute>
                     } />
                     <Route path="/scan" element={<Navigate to="/entry" replace />} />
                     <Route path="/validate/*" element={<Navigate to="/entry" replace />} />

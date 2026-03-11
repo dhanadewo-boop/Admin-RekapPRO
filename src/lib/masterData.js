@@ -27,7 +27,7 @@ const masterProducts = [
     { code: "A2D0214", shortcode: "DL 100", name: "Dekamon 22,43 L, 50 x 100 cc", unit: "dus", price: 985680, discountOptions: [0, 3, 4], defaultDiscount: 3 },
     { code: "A2D0211", shortcode: "DL 500", name: "Dekamon 22,43 L, 20 x 500 cc", unit: "dus", price: 1287600, discountOptions: [0, 3, 4], defaultDiscount: 3 },
     { code: "A2D0212", shortcode: "DL 1000", name: "Dekamon 22,43 L, 12 x 1 L", unit: "dus", price: 1518480, discountOptions: [0, 3, 4], defaultDiscount: 3 },
-    { code: "A3E0108", shortcode: "DC 500", name: "Domacide 400 EC, 20 x 500 cc", unit: "dus", price: 2200000, discountOptions: [0, 6], defaultDiscount: 6 },
+    { code: "A3E0108", shortcode: "DC 500", name: "Dimacide 400 EC, 20 x 500 cc", unit: "dus", price: 2200000, discountOptions: [0, 6], defaultDiscount: 6 },
     { code: "A3E0303", shortcode: "DP 100", name: "Dekapirim 400 SC, 50 x 100 cc", unit: "dus", price: 4884000, discountOptions: [0, 5], defaultDiscount: 5 },
     { code: "A3E0301", shortcode: "DP 500", name: "Dekapirim 400 SC, 20 x 500 cc", unit: "dus", price: 9146400, discountOptions: [0, 5], defaultDiscount: 5 },
     { code: "A3E0302", shortcode: "DP 1000", name: "Dekapirim 400 SC, 12 x 1000 cc", unit: "dus", price: 10642680, discountOptions: [0, 5], defaultDiscount: 5 },
@@ -141,16 +141,11 @@ export function matchProduct(ocrText, threshold = 0.4) {
         return { match: { ...codeMatch, score: 1 }, score: 1, suggestions: [{ ...codeMatch, score: 1 }] };
     }
 
-    // Fuzzy match by name — compare against the base product name (before comma)
+    // Fuzzy match by name — prioritize full string match to distinguish sizes
     const scored = masterProducts
         .map(p => {
-            // Full name similarity
-            const fullScore = similarity(text, p.name);
-            // Also check similarity against just the product name part (before the comma/size)
-            const baseName = p.name.split(',')[0].trim();
-            const baseScore = similarity(text.split(',')[0].trim(), baseName);
-            const bestScore = Math.max(fullScore, baseScore);
-            return { ...p, score: bestScore };
+            const score = similarity(text, p.name);
+            return { ...p, score };
         })
         .sort((a, b) => b.score - a.score);
 
