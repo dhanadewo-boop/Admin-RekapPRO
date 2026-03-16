@@ -13,6 +13,7 @@ import TargetsPage from './pages/TargetsPage';
 import RekapTarget from './pages/RekapTarget';
 import HistoricalDataPage from './pages/HistoricalDataPage';
 import ProgramTargetPage from './pages/ProgramTargetPage';
+import SettingsPage from './pages/SettingsPage';
 
 function AppLayout() {
     const { user, loading } = useAuth();
@@ -57,6 +58,9 @@ function AppLayout() {
                      <ProtectedRoute allowedRoles={['admin', 'pimpinan', 'marketing']}>
                         <ProgramTargetPage />
                         </ProtectedRoute>
+                    } />
+                    <Route path="/settings" element={
+                        <ProtectedRoute allowedRoles={['admin']}><SettingsPage /></ProtectedRoute>
                     } />
                     <Route path="/scan" element={<Navigate to="/entry" replace />} />
                     <Route path="/validate/*" element={<Navigate to="/entry" replace />} />

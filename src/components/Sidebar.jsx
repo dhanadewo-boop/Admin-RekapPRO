@@ -2,7 +2,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
     LayoutDashboard, Zap, FileText, Users, Package,
-    Target, LogOut, ChevronLeft, Menu, BarChart2, History, ClipboardList
+    Target, LogOut, ChevronLeft, Menu, BarChart2, History, ClipboardList, Settings
 } from 'lucide-react';
 import { useState } from 'react';
 
@@ -16,6 +16,7 @@ const navItems = [
     { to: '/products',       icon: Package,         label: 'Rekap Produk',      roles: ['admin', 'pimpinan', 'marketing'] },
     { to: '/targets',        icon: Target,          label: 'Target Customer',   roles: ['admin', 'pimpinan'] },
     { to: '/history',        icon: History,         label: 'Data Historis',     roles: ['admin', 'pimpinan'] },
+    { to: '/settings',       icon: Settings,        label: 'Settings',          roles: ['admin'] },
 ];
 
 const roleLabels = {

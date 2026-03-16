@@ -1,11 +1,12 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { distributeInvoice } from '../lib/distributionEngine';
 import { getAllCustomers, getAllProducts } from '../lib/masterData';
+import { supabase } from '../lib/supabase';
 import IlikeInput from '../components/IlikeInput';
 import {
     Plus, Trash2, CheckCircle, AlertCircle,
-    FileText, Zap, RotateCcw
+    FileText, Zap, RotateCcw, X, Lock
 } from 'lucide-react';
 
 export default function QuickEntryPage() {
@@ -18,6 +19,11 @@ export default function QuickEntryPage() {
     const invoiceNumberRef = useRef(null);
     const customerNameRef = useRef(null);
 
+    // ─── Lock states ───
+    const [customerLocked, setCustomerLocked] = useState(false);
+    const [invoiceDupWarning, setInvoiceDupWarning] = useState(''); // '' | 'checking' | 'duplicate' | 'ok'
+    const dupCheckTimer = useRef(null);
+
     const [formData, setFormData] = useState({
         customerName: '',
         city: '',
@@ -28,7 +34,7 @@ export default function QuickEntryPage() {
     });
 
     function createEmptyProduct() {
-        return { name: '', qty: 1, unit: 'dus', unitPrice: 0, subtotal: 0, discountPercent: 0, productCode: '' };
+        return { name: '', qty: 1, unit: 'dus', unitPrice: 0, subtotal: 0, discountPercent: 0, productCode: '', locked: false };
     }
 
     // ─── Build ILIKE items from master data ───
@@ -87,6 +93,22 @@ export default function QuickEntryPage() {
             }, 50);
         }
     };
+
+    // ─── Duplicate Invoice Number Check ───
+    const checkDuplicateInvoice = useCallback(async (num) => {
+        const trimmed = num.trim();
+        if (!trimmed) { setInvoiceDupWarning(''); return; }
+        setInvoiceDupWarning('checking');
+        clearTimeout(dupCheckTimer.current);
+        dupCheckTimer.current = setTimeout(async () => {
+            const { data } = await supabase
+                .from('invoices')
+                .select('id')
+                .eq('invoice_number', trimmed)
+                .limit(1);
+            setInvoiceDupWarning(data && data.length > 0 ? 'duplicate' : 'ok');
+        }, 500);
+    }, []);
 
     // ─── Form Handlers ───
     const updateField = (field, value) => {
@@ -179,6 +201,8 @@ export default function QuickEntryPage() {
         });
         setError('');
         setSuccess(false);
+        setCustomerLocked(false);
+        setInvoiceDupWarning('');
     };
 
     const handleConfirm = async () => {
@@ -204,7 +228,11 @@ export default function QuickEntryPage() {
         setError('');
 
         try {
-            const dataToSave = { ...formData, source: 'manual' };
+            const dataToSave = {
+                ...formData,
+                customerName: formData.customerName.trim(),  // TRIM sebelum INSERT
+                source: 'manual'
+            };
             await distributeInvoice(dataToSave, null);
             resetForm();
             setSuccess(true);
@@ -285,18 +313,52 @@ export default function QuickEntryPage() {
                                         (ketik lalu <kbd className="kbd">↵ Enter</kbd>)
                                     </span>
                                 </label>
-                                <IlikeInput
-                                    inputRef={customerNameRef}
-                                    value={formData.customerName}
-                                    onChange={val => updateField('customerName', val)}
-                                    items={customerItems}
-                                    onSelect={item => {
-                                        updateField('customerName', item.value.name);
-                                        if (item.value.area) updateField('city', item.value.area);
-                                        setTimeout(() => invoiceNumberRef.current?.focus(), 50);
-                                    }}
-                                    placeholder="Ketik singkatan (TSM) atau nama..."
-                                />
+                                {customerLocked ? (
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                        <div style={{
+                                            flex: 1, padding: '9px 12px',
+                                            borderRadius: 'var(--radius-sm)',
+                                            border: '1.5px solid var(--accent-emerald)',
+                                            background: 'var(--accent-emerald-glow)',
+                                            fontSize: '0.9rem', fontWeight: 600,
+                                            color: 'var(--text-primary)',
+                                            display: 'flex', alignItems: 'center', gap: 8
+                                        }}>
+                                            <Lock size={14} color="var(--accent-emerald)" style={{ flexShrink: 0 }} />
+                                            {formData.customerName}
+                                        </div>
+                                        <button
+                                            onClick={() => {
+                                                setCustomerLocked(false);
+                                                updateField('customerName', '');
+                                                updateField('city', '');
+                                                setTimeout(() => customerNameRef.current?.focus(), 50);
+                                            }}
+                                            title="Reset customer"
+                                            style={{
+                                                padding: '8px 10px', borderRadius: 'var(--radius-sm)',
+                                                border: '1px solid var(--border-glass)', background: 'white',
+                                                color: 'var(--accent-rose)', cursor: 'pointer', flexShrink: 0
+                                            }}
+                                        >
+                                            <X size={16} />
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <IlikeInput
+                                        inputRef={customerNameRef}
+                                        value={formData.customerName}
+                                        onChange={val => updateField('customerName', val)}
+                                        items={customerItems}
+                                        onSelect={item => {
+                                            updateField('customerName', item.value.name);
+                                            if (item.value.area) updateField('city', item.value.area);
+                                            setCustomerLocked(true);
+                                            setTimeout(() => invoiceNumberRef.current?.focus(), 50);
+                                        }}
+                                        placeholder="Ketik singkatan (TSM) atau nama..."
+                                    />
+                                )}
                             </div>
 
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
@@ -324,9 +386,35 @@ export default function QuickEntryPage() {
                                         ref={invoiceNumberRef}
                                         type="text"
                                         value={formData.invoiceNumber}
-                                        onChange={e => updateField('invoiceNumber', e.target.value)}
+                                        onChange={e => {
+                                            updateField('invoiceNumber', e.target.value);
+                                            checkDuplicateInvoice(e.target.value);
+                                        }}
                                         placeholder="024285"
+                                        style={{
+                                            borderColor: invoiceDupWarning === 'duplicate'
+                                                ? 'var(--accent-amber)'
+                                                : invoiceDupWarning === 'ok'
+                                                ? 'var(--accent-emerald)'
+                                                : undefined
+                                        }}
                                     />
+                                    {invoiceDupWarning === 'duplicate' && (
+                                        <div style={{
+                                            marginTop: 4, fontSize: '0.78rem', fontWeight: 600,
+                                            color: '#92610a', background: 'rgba(242,153,74,0.15)',
+                                            border: '1px solid rgba(242,153,74,0.4)',
+                                            borderRadius: 'var(--radius-sm)', padding: '5px 10px',
+                                            display: 'flex', alignItems: 'center', gap: 6
+                                        }}>
+                                            <AlertCircle size={13} /> No. SPB ini sudah ada — pastikan bukan duplikasi
+                                        </div>
+                                    )}
+                                    {invoiceDupWarning === 'checking' && (
+                                        <div style={{ marginTop: 4, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                                            Mengecek...
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="form-group">
                                     <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -403,6 +491,7 @@ export default function QuickEntryPage() {
                                         value={prod.name}
                                         onChange={val => updateProduct(i, 'name', val)}
                                         items={productItems}
+                                        readOnly={prod.locked}
                                         onSelect={item => {
                                             const products = [...formData.products];
                                             const qty = products[i].qty || 1;
@@ -416,13 +505,43 @@ export default function QuickEntryPage() {
                                                 discountPercent: disc,
                                                 discountOptions: item.value.discountOptions || [0],
                                                 subtotal: gross - Math.round(gross * disc / 100),
-                                                productCode: item.value.code || ''
+                                                productCode: item.value.code || '',
+                                                locked: true
                                             };
                                             const { totalAmount } = recalcTotals(products);
                                             setFormData(prev => ({ ...prev, products, totalAmount }));
                                         }}
                                         onShiftEnter={addProductAndFocus}
                                         placeholder="Ketik singkatan (B100) atau nama..."
+                                        lockedDisplay={prod.locked ? (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                <div style={{
+                                                    flex: 1, padding: '7px 10px',
+                                                    borderRadius: 'var(--radius-sm)',
+                                                    border: '1.5px solid var(--accent-emerald)',
+                                                    background: 'var(--accent-emerald-glow)',
+                                                    fontSize: '0.85rem', fontWeight: 600,
+                                                    display: 'flex', alignItems: 'center', gap: 6,
+                                                    color: 'var(--text-primary)',
+                                                }}>
+                                                    <Lock size={12} color="var(--accent-emerald)" style={{ flexShrink: 0 }} />
+                                                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                        {prod.name}
+                                                    </span>
+                                                </div>
+                                                <button
+                                                    onClick={() => updateProduct(i, 'locked', false)}
+                                                    title="Reset produk"
+                                                    style={{
+                                                        padding: '6px 8px', borderRadius: 'var(--radius-sm)',
+                                                        border: '1px solid var(--border-glass)', background: 'white',
+                                                        color: 'var(--accent-rose)', cursor: 'pointer', flexShrink: 0
+                                                    }}
+                                                >
+                                                    <X size={13} />
+                                                </button>
+                                            </div>
+                                        ) : null}
                                     />
                                     <input
                                         type="number"
@@ -563,4 +682,3 @@ export default function QuickEntryPage() {
         </div >
     );
 }
-

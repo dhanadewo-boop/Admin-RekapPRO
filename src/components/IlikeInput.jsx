@@ -19,12 +19,17 @@ import { useState, useRef, useEffect } from 'react';
  *   placeholder: string
  *   style: object
  */
-export default function IlikeInput({ value, onChange, items, onSelect, onShiftEnter, placeholder, style, inputRef }) {
+export default function IlikeInput({ value, onChange, items, onSelect, onShiftEnter, placeholder, style, inputRef, lockedDisplay }) {
     const [showResults, setShowResults] = useState(false);
     const [activeIndex, setActiveIndex] = useState(0);
     const wrapperRef = useRef(null);
     const localInputRef = useRef(null);
     const activeInputRef = inputRef || localInputRef;
+
+    // If locked, render the lockedDisplay instead
+    if (lockedDisplay) {
+        return <div ref={wrapperRef}>{lockedDisplay}</div>;
+    }
 
     // ILIKE filter: case-insensitive, match anywhere in label, sublabel, or shortcode
     const filtered = value && value.length >= 1 && showResults
