@@ -2,19 +2,20 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import {
     LayoutDashboard, Zap, FileText, Users, Package,
-    Target, LogOut, ChevronLeft, Menu, BarChart2, History
+    Target, LogOut, ChevronLeft, Menu, BarChart2, History, ClipboardList
 } from 'lucide-react';
 import { useState } from 'react';
 
 const navItems = [
-    { to: '/', icon: LayoutDashboard, label: 'Dashboard', roles: ['admin', 'pimpinan', 'marketing'] },
-    { to: '/analitik', icon: BarChart2, label: 'Kontribusi', roles: ['admin', 'pimpinan', 'marketing'] },
-    { to: '/entry', icon: Zap, label: 'Quick Entry', roles: ['admin'] },
-    { to: '/rekap', icon: FileText, label: 'Rekap Penjualan', roles: ['admin', 'pimpinan', 'marketing'] },
-    { to: '/customers', icon: Users, label: 'Rekap Customer', roles: ['admin', 'pimpinan', 'marketing'] },
-    { to: '/products', icon: Package, label: 'Rekap Produk', roles: ['admin', 'pimpinan', 'marketing'] },
-    { to: '/targets', icon: Target, label: 'Target Customer', roles: ['admin', 'pimpinan'] },
-    { to: '/history', icon: History, label: 'Data Historis', roles: ['admin', 'pimpinan'] },
+    { to: '/',               icon: LayoutDashboard, label: 'Dashboard',        roles: ['admin', 'pimpinan', 'marketing'] },
+    { to: '/entry',          icon: Zap,             label: 'Quick Entry',       roles: ['admin'] },
+    { to: '/rekap',          icon: FileText,        label: 'Rekap Penjualan',   roles: ['admin', 'pimpinan', 'marketing'] },
+    { to: '/analitik',       icon: BarChart2,       label: 'Rekap Kontribusi',  roles: ['admin', 'pimpinan', 'marketing'] },
+    { to: '/program-target', icon: ClipboardList,   label: 'Program Target',    roles: ['admin', 'pimpinan', 'marketing'] },
+    { to: '/customers',      icon: Users,           label: 'Rekap Customer',    roles: ['admin', 'pimpinan', 'marketing'] },
+    { to: '/products',       icon: Package,         label: 'Rekap Produk',      roles: ['admin', 'pimpinan', 'marketing'] },
+    { to: '/targets',        icon: Target,          label: 'Target Customer',   roles: ['admin', 'pimpinan'] },
+    { to: '/history',        icon: History,         label: 'Data Historis',     roles: ['admin', 'pimpinan'] },
 ];
 
 const roleLabels = {
@@ -38,7 +39,6 @@ export default function Sidebar() {
 
     return (
         <>
-            {/* Mobile toggle */}
             <button
                 className="sidebar-mobile-toggle"
                 onClick={() => setCollapsed(!collapsed)}
@@ -63,7 +63,6 @@ export default function Sidebar() {
                 zIndex: 1000,
                 overflowX: 'hidden'
             }}>
-                {/* Header */}
                 <div style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     marginBottom: 32, padding: '0 4px', minHeight: 40
@@ -95,7 +94,6 @@ export default function Sidebar() {
                     </button>
                 </div>
 
-                {/* Navigation */}
                 <nav style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
                     {filteredItems.map(({ to, icon: Icon, label }) => {
                         const isActive = location.pathname === to || (to !== '/' && location.pathname.startsWith(to));
@@ -120,11 +118,7 @@ export default function Sidebar() {
                     })}
                 </nav>
 
-                {/* User Info & Logout */}
-                <div style={{
-                    borderTop: '1px solid var(--border-glass)',
-                    paddingTop: 16, marginTop: 16
-                }}>
+                <div style={{ borderTop: '1px solid var(--border-glass)', paddingTop: 16, marginTop: 16 }}>
                     {!collapsed && user && (
                         <div style={{ marginBottom: 12, padding: '0 4px' }}>
                             <p style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: 2 }}>
