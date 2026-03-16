@@ -1,8 +1,8 @@
 ﻿No.;Kode Barang;Nama Barang;Satuan;Harga;grup_target;satuan_tampil;liter_per_dus;kg_per_dus
 1;A1A0111;Osmocote 6-13-25, 100 gr;dus;799.200;OSMOCOTE;kg;-;4
 2;A1A0121;Osmocote 6-13-25, 500 gr;dus;1.605.060;OSMOCOTE;kg;-;12
-3;A1A0201;Osmocote 13-13-13 ,100 gr;dus;821.400;OSMOCOTE;kg;-;4
-4;A1A0202;Osmocote 13-13-13 ,500 gr;dus;1.704.960;OSMOCOTE;kg;-;12
+3;A1A0201;Osmocote 13-13-13, 100 gr;dus;821.400;OSMOCOTE;kg;-;4
+4;A1A0202;Osmocote 13-13-13, 500 gr;dus;1.704.960;OSMOCOTE;kg;-;12
 5;A1A0311;Osmocote 17-11-10, 100 gr;dus;821.400;OSMOCOTE;kg;-;4
 6;A1A0321;Osmocote 17-11-10, 500 gr;dus;1.704.960;OSMOCOTE;kg;-;12
 7;A1B0204;Gandapan Maxima, 40 x 200 gr;dus;710.400;GANDAPAN;kg;-;8
@@ -11,7 +11,7 @@
 10;A1B0501;Gandasil Bunga, 144 x 100 gr;dus;1.330.668;GANDASIL;kg;-;14,4
 11;A1B0502;Gandasil Bunga, 24 x 500 gr;dus;1.038.960;GANDASIL;kg;-;12
 12;A1B0601;Gandasil Daun, 144 x 100 gr;dus;1.198.800;GANDASIL;kg;-;14,4
-13;A1B0602;Gandasil Daun, 24 x 500 gr;dus;932.400;GANDASIL;kg;-;
+13;A1B0602;Gandasil Daun, 24 x 500 gr;dus;932.400;GANDASIL;kg;-;12
 15;;Gandastar ( Mix ), 20 x 500 cc;dus;399.600;GANDASTAR;liter;10;-
 16;;Gandastar ( Mix ), 12 x 1000 cc;dus;452.880;GANDASTAR;liter;12;-
 17;A1C0102;Dekorgan Plus, 24 x 500 cc;dus;1.043.400;DEKORGAN;liter;10;-

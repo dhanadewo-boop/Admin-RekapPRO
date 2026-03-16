@@ -188,6 +188,115 @@ const AREA_LABELS = {
     'NON TARGET': 'Non Target',
 };
 
+
+function ProdukBlock({ product, satuan, customers, totalTarget, totalRealisasi, totalRupiah, overallPct, st, expandAll }) {
+    const [open, setOpen] = useState(true);
+    useEffect(() => {
+        if (expandAll === true)  setOpen(true);
+        if (expandAll === false) setOpen(false);
+    }, [expandAll]);
+
+    return (
+        <div style={{ background: '#fff', borderRadius: 12, overflow: 'hidden', border: '1px solid #e5e7eb', boxShadow: '0 1px 4px rgba(0,0,0,0.05)', marginBottom: 12 }}>
+            <button onClick={() => setOpen(o => !o)} style={{
+                width: '100%', padding: '14px 20px',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                background: open ? '#f8fafc' : '#fff',
+                borderBottom: open ? '1px solid #e5e7eb' : 'none',
+                cursor: 'pointer', textAlign: 'left', gap: 12
+            }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1 }}>
+                    <div style={{ width: 8, height: 8, borderRadius: '50%', background: st.color, flexShrink: 0 }} />
+                    <div>
+                        <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#111827' }}>{product}</div>
+                        <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{customers.length} customer · target {fmt(totalTarget)} {satuan}</div>
+                    </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexShrink: 0 }}>
+                    <div style={{ textAlign: 'right', minWidth: 120 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end', marginBottom: 4 }}>
+                            <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '1px 6px', borderRadius: 99, background: st.bg, color: st.color }}>{st.label}</span>
+                            <span style={{ fontSize: '0.9rem', fontWeight: 700, color: st.color }}>{overallPct !== null ? overallPct.toFixed(1) + '%' : '0%'}</span>
+                        </div>
+                        <ProgressBar pct={overallPct ?? 0} />
+                        <div style={{ fontSize: '0.68rem', color: '#9ca3af', marginTop: 4 }}>{fmt(totalRealisasi)} / {fmt(totalTarget)} {satuan}</div>
+                    </div>
+                    <div style={{ textAlign: 'right', minWidth: 100 }}>
+                        <div style={{ fontSize: '0.68rem', color: '#9ca3af' }}>Realisasi</div>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#374151' }}>{fmtRp(totalRupiah)}</div>
+                    </div>
+                    <div style={{ color: '#9ca3af' }}>{open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</div>
+                </div>
+            </button>
+
+            {open && (
+                <div style={{ overflowX: 'auto' }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
+                        <thead>
+                            <tr style={{ background: '#f8fafc' }}>
+                                <th style={TH}>CUSTOMER</th>
+                                <th style={{ ...TH }}>AREA</th>
+                                <th style={{ ...TH, textAlign: 'right' }}>TARGET ({satuan})</th>
+                                <th style={{ ...TH, textAlign: 'right' }}>REALISASI</th>
+                                <th style={{ ...TH, textAlign: 'right' }}>SISA</th>
+                                <th style={{ ...TH, textAlign: 'right' }}>NILAI (Rp)</th>
+                                <th style={{ ...TH, textAlign: 'center', minWidth: 140 }}>PENCAPAIAN</th>
+                                <th style={{ ...TH, textAlign: 'center' }}>STATUS</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {customers.map((c, i) => {
+                                const pct  = c.target > 0 ? (c.realisasi / c.target) * 100 : null;
+                                const sisa = c.target - c.realisasi;
+                                const cst  = getStatusStyle(pct, c.area === 'NON TARGET');
+                                return (
+                                    <tr key={i} style={{ borderTop: '1px solid #f3f4f6', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                                        <td style={{ ...TD, fontWeight: 600, color: '#374151' }}>{c.customer}</td>
+                                        <td style={{ ...TD, color: '#6b7280', fontSize: '0.78rem' }}>{c.area}</td>
+                                        <td style={{ ...TD, textAlign: 'right', fontWeight: 600 }}>{c.target > 0 ? fmt(c.target) : '–'}</td>
+                                        <td style={{ ...TD, textAlign: 'right', color: pct > 0 ? '#15803d' : '#374151', fontWeight: pct > 0 ? 600 : 400 }}>{fmt(c.realisasi)}</td>
+                                        <td style={{ ...TD, textAlign: 'right', color: sisa > 0 ? '#dc2626' : '#15803d', fontWeight: 600 }}>{c.target > 0 ? (sisa > 0 ? fmt(sisa) : '✓') : '–'}</td>
+                                        <td style={{ ...TD, textAlign: 'right' }}>{fmtRp(c.rupiah)}</td>
+                                        <td style={{ ...TD }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                {pct !== null && <ProgressBar pct={pct} />}
+                                                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: cst.color, minWidth: 40, textAlign: 'right' }}>{pct !== null ? pct.toFixed(1) + '%' : '–'}</span>
+                                            </div>
+                                        </td>
+                                        <td style={{ ...TD, textAlign: 'center' }}>
+                                            <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: cst.bg, color: cst.color }}>{cst.icon} {cst.label}</span>
+                                        </td>
+                                    </tr>
+                                );
+                            })}
+                        </tbody>
+                        <tfoot>
+                            <tr style={{ background: '#f1f5f9', borderTop: '2px solid #e2e8f0' }}>
+                                <td style={{ ...TD, fontWeight: 700, color: '#1e293b' }} colSpan={2}>TOTAL</td>
+                                <td style={{ ...TD, textAlign: 'right', fontWeight: 700 }}>{fmt(totalTarget)}</td>
+                                <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: '#15803d' }}>{fmt(totalRealisasi)}</td>
+                                <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: (totalTarget - totalRealisasi) > 0 ? '#dc2626' : '#15803d' }}>
+                                    {(totalTarget - totalRealisasi) > 0 ? fmt(totalTarget - totalRealisasi) : '✓ LUNAS'}
+                                </td>
+                                <td style={{ ...TD, textAlign: 'right', fontWeight: 700 }}>{fmtRp(totalRupiah)}</td>
+                                <td style={{ ...TD }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                        {overallPct !== null && <ProgressBar pct={overallPct} />}
+                                        <span style={{ fontSize: '0.8rem', fontWeight: 800, color: st.color, minWidth: 40, textAlign: 'right' }}>{overallPct !== null ? overallPct.toFixed(1) + '%' : '–'}</span>
+                                    </div>
+                                </td>
+                                <td style={{ ...TD, textAlign: 'center' }}>
+                                    <span style={{ fontSize: '0.7rem', fontWeight: 800, padding: '2px 8px', borderRadius: 99, background: st.bg, color: st.color }}>{st.label}</span>
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            )}
+        </div>
+    );
+}
+
 export default function ProgramTargetPage() {
     const [data, setData]               = useState([]);
     const [loading, setLoading]         = useState(true);
@@ -197,6 +306,8 @@ export default function ProgramTargetPage() {
     const [tahun, setTahun] = useState(new Date().getFullYear()); // Otomatis tahun berjalan (2026)
     const [lastRefresh, setLastRefresh] = useState(null);
     const [expandAll, setExpandAll]     = useState(null);  // null=default tertutup, true=buka semua, false=tutup semua
+    const [activeTab, setActiveTab]     = useState('customer'); // 'customer' | 'produk'
+    const [satuan, setSatuan]           = useState('DUS');      // 'DUS' | 'LITER' | 'KG'
 
     const fetchData = async () => {
         setLoading(true); setError(null);
@@ -260,12 +371,37 @@ export default function ProgramTargetPage() {
         const map = {};
         data.forEach(r => {
             const k = r.product_name;
-            if (!map[k]) map[k] = { product: k, target: 0, realisasi: 0, rupiah: 0 };
+            if (!map[k]) map[k] = { product: k, satuan: r.satuan, target: 0, realisasi: 0, rupiah: 0 };
             map[k].target    += Number(r.target_qty);
             map[k].realisasi += Number(r.realisasi_qty || 0);
             map[k].rupiah    += Number(r.realisasi_rupiah || 0);
         });
         return Object.values(map).sort((a, b) => b.target - a.target);
+    }, [data]);
+
+    // Tab 2: grouped per produk → per customer
+    const groupedByProduk = useMemo(() => {
+        const map = {};
+        data.forEach(r => {
+            const k = r.product_name;
+            if (!map[k]) map[k] = { product: k, satuan: r.satuan, customers: {} };
+            if (!map[k].customers[r.customer_name]) {
+                map[k].customers[r.customer_name] = {
+                    customer: r.customer_name, area: r.area, kota: r.kota,
+                    target: 0, realisasi: 0, rupiah: 0
+                };
+            }
+            map[k].customers[r.customer_name].target    += Number(r.target_qty);
+            map[k].customers[r.customer_name].realisasi += Number(r.realisasi_qty || 0);
+            map[k].customers[r.customer_name].rupiah    += Number(r.realisasi_rupiah || 0);
+        });
+        return Object.values(map)
+            .map(p => ({ ...p, customers: Object.values(p.customers).sort((a,b) => b.target - a.target) }))
+            .sort((a, b) => {
+                const ta = a.customers.reduce((s,c) => s+c.target, 0);
+                const tb = b.customers.reduce((s,c) => s+c.target, 0);
+                return tb - ta;
+            });
     }, [data]);
 
     return (
@@ -296,6 +432,34 @@ export default function ProgramTargetPage() {
                     <span><strong>Gagal memuat data:</strong> {error}</span>
                 </div>
             )}
+
+            {/* Tab Navigation + Toggle Satuan */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 20 }}>
+                <div style={{ display: 'flex', gap: 6, background: '#f1f5f9', padding: 4, borderRadius: 10 }}>
+                    {[['customer','Per Customer'],['produk','Per Produk']].map(([key, label]) => (
+                        <button key={key} onClick={() => setActiveTab(key)} style={{
+                            padding: '6px 18px', borderRadius: 8, fontSize: '0.82rem', fontWeight: 600,
+                            border: 'none', cursor: 'pointer',
+                            background: activeTab === key ? '#fff' : 'transparent',
+                            color: activeTab === key ? '#1d4ed8' : '#6b7280',
+                            boxShadow: activeTab === key ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
+                            transition: 'all 0.15s'
+                        }}>{label}</button>
+                    ))}
+                </div>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '5px 10px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
+                    <span style={{ fontSize: '0.72rem', color: '#6b7280', fontWeight: 700, letterSpacing: '0.05em' }}>SATUAN:</span>
+                    {['DUS','LITER','KG'].map(s => (
+                        <button key={s} onClick={() => setSatuan(s)} style={{
+                            padding: '6px 16px', borderRadius: 8, fontSize: '0.8rem', fontWeight: 700,
+                            border: 'none', cursor: 'pointer', transition: 'all 0.15s',
+                            background: satuan === s ? '#f59e0b' : 'transparent',
+                            color: satuan === s ? '#fff' : '#9ca3af',
+                            boxShadow: satuan === s ? '0 2px 6px rgba(245,158,11,0.4)' : 'none',
+                        }}>{s}</button>
+                    ))}
+                </div>
+            </div>
 
             {/* Summary Cards */}
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 24 }}>
@@ -381,9 +545,30 @@ export default function ProgramTargetPage() {
                 </div>
             )}
 
-            {!loading && filtered.map((g, i) => (
+            {/* TAB 1: Per Customer */}
+            {!loading && activeTab === 'customer' && filtered.map((g, i) => (
                 <CustomerBlock key={g.customer} customer={g.customer} kota={g.kota} area={g.area} rows={g.rows} defaultOpen={false} expandAll={expandAll} />
             ))}
+
+            {/* TAB 2: Per Produk → Per Customer */}
+            {!loading && activeTab === 'produk' && (
+                <div>
+                    {groupedByProduk.map((p, pi) => {
+                        const totalTarget   = p.customers.reduce((s, c) => s + c.target, 0);
+                        const totalRealisasi = p.customers.reduce((s, c) => s + c.realisasi, 0);
+                        const totalRupiah   = p.customers.reduce((s, c) => s + c.rupiah, 0);
+                        const overallPct    = totalTarget > 0 ? (totalRealisasi / totalTarget) * 100 : null;
+                        const st            = getStatusStyle(overallPct, false);
+                        const [open, setOpen] = [true, () => {}]; // always show inline — use local state via key
+                        return (
+                            <ProdukBlock key={p.product} product={p.product} satuan={satuan}
+                                customers={p.customers} totalTarget={totalTarget}
+                                totalRealisasi={totalRealisasi} totalRupiah={totalRupiah}
+                                overallPct={overallPct} st={st} expandAll={expandAll} />
+                        );
+                    })}
+                </div>
+            )}
 
             {/* Rekap per Produk */}
             {!loading && rekapProduk.length > 0 && (

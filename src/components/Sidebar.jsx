@@ -14,7 +14,6 @@ const navItems = [
     { to: '/program-target', icon: ClipboardList,   label: 'Program Target',    roles: ['admin', 'pimpinan', 'marketing'] },
     { to: '/customers',      icon: Users,           label: 'Rekap Customer',    roles: ['admin', 'pimpinan', 'marketing'] },
     { to: '/products',       icon: Package,         label: 'Rekap Produk',      roles: ['admin', 'pimpinan', 'marketing'] },
-    { to: '/targets',        icon: Target,          label: 'Target Customer',   roles: ['admin', 'pimpinan'] },
     { to: '/history',        icon: History,         label: 'Data Historis',     roles: ['admin', 'pimpinan'] },
     { to: '/settings',       icon: Settings,        label: 'Settings',          roles: ['admin'] },
 ];

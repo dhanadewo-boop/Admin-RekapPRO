@@ -7,9 +7,12 @@ export default function RekapTarget() {
     const [tabAktif, setTabAktif] = useState('global');
     const [dataBulananMatrix, setDataBulananMatrix] = useState({});
     const [loading, setLoading] = useState(true);
+    const [targetTotal, setTargetTotal] = useState(null); // null = masih loading
 
     const tahunAktif = 2026;
-    const TARGET_TOTAL = 95000000000;
+    // TARGET_TOTAL dibaca dari app_settings (Settings → Target Penjualan)
+    // Fallback 95M kalau belum ada di database
+    const TARGET_TOTAL = targetTotal ?? 95000000000;
     const namaBulan = ["JANUARI", "FEBRUARI", "MARET", "APRIL", "MEI", "JUNI", "JULI", "AGUSTUS", "SEPTEMBER", "OKTOBER", "NOVEMBER", "DESEMBER"];
     const namaBulanPendek = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 
@@ -57,7 +60,28 @@ export default function RekapTarget() {
         { label: "Dekabond", kategori: "Pestisida", items: ["Dekabond, 50 x 100 cc", "Dekabond, 20 x 500 cc"] },
     ];
 
-    useEffect(() => { fetchAllData(); }, []);
+    useEffect(() => {
+        fetchTargetTotal();
+        fetchAllData();
+    }, []);
+
+    // Fetch target tahunan dari app_settings (key: target_penjualan_YYYY)
+    const fetchTargetTotal = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('app_settings')
+                .select('value')
+                .eq('key', `target_penjualan_${tahunAktif}`)
+                .maybeSingle();
+            if (!error && data?.value?.amount) {
+                setTargetTotal(Number(data.value.amount));
+            } else {
+                setTargetTotal(95000000000); // fallback
+            }
+        } catch (e) {
+            setTargetTotal(95000000000); // fallback
+        }
+    };
 
     const isPupuk = (name) => {
         const l = name.toLowerCase();
@@ -208,7 +232,7 @@ export default function RekapTarget() {
     };
 
     // ═══ LOADING ═══
-    if (loading) {
+    if (loading || targetTotal === null) {
         return (
             <div className="loading-overlay" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                 <div className="spinner spinner-lg"></div>
@@ -279,109 +303,105 @@ export default function RekapTarget() {
                             📥 Export Excel
                         </button>
                     </div>
-                    <div className="visible-scrollbar" style={scrollStyle}>
-                        <table style={{ borderCollapse: 'collapse', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
-                            <thead>
-                                <tr style={{ background: '#2c3e50' }}>
-                                    <th style={{ color: 'white', padding: '8px 12px', textAlign: 'left', position: 'sticky', left: 0, background: '#2c3e50', zIndex: 10, borderRight: '1px solid rgba(255,255,255,0.15)' }}>PRODUK</th>
-                                    <th style={{ color: 'white', padding: '8px 10px', textAlign: 'right', borderRight: '1px solid rgba(255,255,255,0.15)' }}>TOTAL PRODUK</th>
-                                    <th style={{ color: 'white', padding: '8px 10px', textAlign: 'right', borderRight: '1px solid rgba(255,255,255,0.15)' }}>TOTAL GROUP</th>
-                                    <th style={{ color: 'white', padding: '8px 10px', textAlign: 'right' }}>%</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {/* PUPUK Section */}
-                                {kontribusiGroups.filter(g => g.kategori === 'Pupuk').map((group, gIdx) => {
-                                    let groupTotal = 0;
-                                    group.items.forEach(n => { groupTotal += getProductData(n).totalTahun; });
-                                    const pct = totalOmset > 0 ? ((groupTotal / totalOmset) * 100).toFixed(2) : '0.00';
-                                    const bg = groupColors[gIdx % 2];
-                                    return (
-                                        <Fragment key={`kp-${gIdx}`}>
-                                            {group.items.map((name, ii) => {
-                                                const d = getProductData(name);
-                                                const isL = ii === group.items.length - 1;
-                                                const isF = ii === 0;
-                                                return (
-                                                    <tr key={`ki-${gIdx}-${ii}`} style={{ background: bg, borderTop: isF ? '2px solid #cbd5e1' : '1px solid #f1f5f9', borderBottom: isL ? '2px solid #cbd5e1' : '1px solid #f1f5f9' }}>
-                                                        <td style={{ padding: '5px 12px', fontWeight: 500, color: '#334155', position: 'sticky', left: 0, background: bg, borderRight: '1px solid #e2e8f0', zIndex: 5 }}>{name}</td>
-                                                        <td className="num-cell" style={{ padding: '5px 10px', textAlign: 'right', color: '#475569', borderRight: '1px solid #e2e8f0' }}>{d.totalTahun > 0 ? d.totalTahun.toLocaleString('id-ID') : '-'}</td>
-                                                        <td className="num-cell" style={{ padding: '5px 10px', textAlign: 'right', borderRight: '1px solid #e2e8f0', fontWeight: isL ? 700 : 400, color: isL ? '#1e40af' : '#94a3b8' }}>{isL ? groupTotal.toLocaleString('id-ID') : '-'}</td>
-                                                        <td className="num-cell" style={{ padding: '5px 10px', textAlign: 'right', fontWeight: isL ? 700 : 400, color: isL ? '#059669' : '#94a3b8' }}>{isL ? pct : '-'}</td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </Fragment>
-                                    );
-                                })}
+                    {/* 2-KOLOM: PUPUK kiri, PESTISIDA kanan */}
+                    <div style={{ display: 'flex', gap: 0, alignItems: 'flex-start' }}>
 
-                                {/* JUMLAH PUPUK */}
-                                <tr style={{ background: '#dcfce7', borderTop: '3px solid #16a34a' }}>
-                                    <td style={{ padding: '8px 12px', fontWeight: 800, color: '#166534', position: 'sticky', left: 0, background: '#dcfce7', borderRight: '1px solid #bbf7d0', zIndex: 5, fontSize: '0.82rem' }}>JUMLAH PUPUK</td>
-                                    <td className="num-cell" style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: '#166534', borderRight: '1px solid #bbf7d0' }}>{formatRp(totalPupuk)}</td>
-                                    <td className="num-cell" style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: '#166534', borderRight: '1px solid #bbf7d0' }}>{formatRp(totalPupuk)}</td>
-                                    <td className="num-cell" style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: '#166534' }}>{totalOmset > 0 ? ((totalPupuk / totalOmset) * 100).toFixed(2) : '0.00'}</td>
-                                </tr>
+                        {/* KOLOM PUPUK */}
+                        <div style={{ flex: 1, borderRight: '2px solid #e2e8f0' }}>
+                            <div style={{ padding: '8px 12px', background: '#166534', color: 'white', fontWeight: 800, fontSize: '0.82rem', letterSpacing: '1px' }}>PUPUK</div>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                                <thead>
+                                    <tr style={{ background: '#2c3e50' }}>
+                                        <th style={{ color: 'white', padding: '7px 12px', textAlign: 'left' }}>PRODUK</th>
+                                        <th style={{ color: 'white', padding: '7px 10px', textAlign: 'right' }}>TOTAL GROUP</th>
+                                        <th style={{ color: 'white', padding: '7px 10px', textAlign: 'right' }}>%</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {kontribusiGroups.filter(g => g.kategori === 'Pupuk').map((group, gIdx) => {
+                                        let groupTotal = 0;
+                                        group.items.forEach(n => { groupTotal += getProductData(n).totalTahun; });
+                                        const pct = totalOmset > 0 ? ((groupTotal / totalOmset) * 100).toFixed(2) : '0.00';
+                                        const bg = gIdx % 2 === 0 ? '#ffffff' : '#f8fafc';
+                                        return (
+                                            <tr key={`p-${gIdx}`} style={{ background: bg, borderTop: '1px solid #e2e8f0' }}>
+                                                <td style={{ padding: '7px 12px', fontWeight: 600, color: '#166534' }}>{group.label}</td>
+                                                <td className="num-cell" style={{ padding: '7px 10px', textAlign: 'right', color: '#1e40af', fontWeight: 700 }}>{groupTotal > 0 ? groupTotal.toLocaleString('id-ID') : '-'}</td>
+                                                <td className="num-cell" style={{ padding: '7px 10px', textAlign: 'right', color: '#059669', fontWeight: 700 }}>{pct}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                                <tfoot>
+                                    <tr style={{ background: '#dcfce7', borderTop: '3px solid #16a34a' }}>
+                                        <td style={{ padding: '9px 12px', fontWeight: 800, color: '#166534', fontSize: '0.82rem' }}>TOTAL PUPUK</td>
+                                        <td className="num-cell" style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 800, color: '#166534' }}>{formatRp(totalPupuk)}</td>
+                                        <td className="num-cell" style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 800, color: '#166534' }}>{totalOmset > 0 ? ((totalPupuk / totalOmset) * 100).toFixed(2) : '0.00'}</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
 
-                                {/* PESTISIDA Section */}
-                                {kontribusiGroups.filter(g => g.kategori === 'Pestisida').map((group, gIdx) => {
-                                    let groupTotal = 0;
-                                    group.items.forEach(n => { groupTotal += getProductData(n).totalTahun; });
-                                    const pct = totalOmset > 0 ? ((groupTotal / totalOmset) * 100).toFixed(2) : '0.00';
-                                    const bg = groupColors[gIdx % 2];
-                                    return (
-                                        <Fragment key={`ke-${gIdx}`}>
-                                            {group.items.map((name, ii) => {
-                                                const d = getProductData(name);
-                                                const isL = ii === group.items.length - 1;
-                                                const isF = ii === 0;
-                                                return (
-                                                    <tr key={`kei-${gIdx}-${ii}`} style={{ background: bg, borderTop: isF ? '2px solid #cbd5e1' : '1px solid #f1f5f9', borderBottom: isL ? '2px solid #cbd5e1' : '1px solid #f1f5f9' }}>
-                                                        <td style={{ padding: '5px 12px', fontWeight: 500, color: '#334155', position: 'sticky', left: 0, background: bg, borderRight: '1px solid #e2e8f0', zIndex: 5 }}>{name}</td>
-                                                        <td className="num-cell" style={{ padding: '5px 10px', textAlign: 'right', color: '#475569', borderRight: '1px solid #e2e8f0' }}>{d.totalTahun > 0 ? d.totalTahun.toLocaleString('id-ID') : '-'}</td>
-                                                        <td className="num-cell" style={{ padding: '5px 10px', textAlign: 'right', borderRight: '1px solid #e2e8f0', fontWeight: isL ? 700 : 400, color: isL ? '#1e40af' : '#94a3b8' }}>{isL ? groupTotal.toLocaleString('id-ID') : '-'}</td>
-                                                        <td className="num-cell" style={{ padding: '5px 10px', textAlign: 'right', fontWeight: isL ? 700 : 400, color: isL ? '#059669' : '#94a3b8' }}>{isL ? pct : '-'}</td>
-                                                    </tr>
-                                                );
-                                            })}
-                                        </Fragment>
-                                    );
-                                })}
-
-                                {/* JUMLAH PESTISIDA */}
-                                <tr style={{ background: '#fee2e2', borderTop: '3px solid #ef4444' }}>
-                                    <td style={{ padding: '8px 12px', fontWeight: 800, color: '#991b1b', position: 'sticky', left: 0, background: '#fee2e2', borderRight: '1px solid #fecaca', zIndex: 5, fontSize: '0.82rem' }}>JUMLAH PESTISIDA</td>
-                                    <td className="num-cell" style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: '#991b1b', borderRight: '1px solid #fecaca' }}>{formatRp(totalPestisida)}</td>
-                                    <td className="num-cell" style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: '#991b1b', borderRight: '1px solid #fecaca' }}>{formatRp(totalPestisida)}</td>
-                                    <td className="num-cell" style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: '#991b1b' }}>{totalOmset > 0 ? ((totalPestisida / totalOmset) * 100).toFixed(2) : '0.00'}</td>
-                                </tr>
-
-                                {/* TOTAL OMZET */}
-                                <tr style={{ background: '#1e293b', borderTop: '4px double #475569' }}>
-                                    <td style={{ padding: '10px 12px', fontWeight: 900, color: '#fbbf24', fontSize: '0.85rem', position: 'sticky', left: 0, background: '#1e293b', borderRight: '1px solid #475569', zIndex: 5 }}>TOTAL OMZET</td>
-                                    <td className="num-cell" style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 900, color: '#fbbf24', borderRight: '1px solid #475569' }}>{formatRp(totalOmset)}</td>
-                                    <td className="num-cell" style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 900, color: '#fbbf24', borderRight: '1px solid #475569' }}>{formatRp(totalOmset)}</td>
-                                    <td className="num-cell" style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 900, color: '#fbbf24' }}>100.00</td>
-                                </tr>
-
-                                {/* TARGET */}
-                                <tr style={{ background: '#fef3c7', borderTop: '2px solid #f59e0b' }}>
-                                    <td style={{ padding: '8px 12px', fontWeight: 800, color: '#92400e', fontSize: '0.82rem', position: 'sticky', left: 0, background: '#fef3c7', borderRight: '1px solid #fcd34d', zIndex: 5 }}>🎯 TARGET {tahunAktif}</td>
-                                    <td className="num-cell" style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: '#92400e', borderRight: '1px solid #fcd34d' }}>{TARGET_TOTAL.toLocaleString('id-ID')}</td>
-                                    <td className="num-cell" style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: '#92400e', borderRight: '1px solid #fcd34d' }}>{TARGET_TOTAL.toLocaleString('id-ID')}</td>
-                                    <td className="num-cell" style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: '#92400e' }}>{totalOmset > 0 ? ((totalOmset / TARGET_TOTAL) * 100).toFixed(2) : '0.00'}</td>
-                                </tr>
-
-                                {/* PENCAPAIAN */}
-                                <tr style={{ background: totalOmset >= TARGET_TOTAL ? '#dcfce7' : '#fef2f2' }}>
-                                    <td style={{ padding: '8px 12px', fontWeight: 700, color: totalOmset >= TARGET_TOTAL ? '#166534' : '#991b1b', fontSize: '0.82rem', position: 'sticky', left: 0, background: 'inherit', borderRight: '1px solid #e2e8f0', zIndex: 5 }}>PENCAPAIAN TARGET</td>
-                                    <td className="num-cell" colSpan={3} style={{ padding: '8px 10px', textAlign: 'center', fontWeight: 800, color: totalOmset >= TARGET_TOTAL ? '#166534' : '#991b1b', fontSize: '0.9rem' }}>
-                                        {totalOmset > 0 ? ((totalOmset / TARGET_TOTAL) * 100).toFixed(2) : '0.00'}% dari Target
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
+                        {/* KOLOM PESTISIDA */}
+                        <div style={{ flex: 1 }}>
+                            <div style={{ padding: '8px 12px', background: '#991b1b', color: 'white', fontWeight: 800, fontSize: '0.82rem', letterSpacing: '1px' }}>PESTISIDA</div>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                                <thead>
+                                    <tr style={{ background: '#2c3e50' }}>
+                                        <th style={{ color: 'white', padding: '7px 12px', textAlign: 'left' }}>PRODUK</th>
+                                        <th style={{ color: 'white', padding: '7px 10px', textAlign: 'right' }}>TOTAL GROUP</th>
+                                        <th style={{ color: 'white', padding: '7px 10px', textAlign: 'right' }}>%</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {kontribusiGroups.filter(g => g.kategori === 'Pestisida').map((group, gIdx) => {
+                                        let groupTotal = 0;
+                                        group.items.forEach(n => { groupTotal += getProductData(n).totalTahun; });
+                                        const pct = totalOmset > 0 ? ((groupTotal / totalOmset) * 100).toFixed(2) : '0.00';
+                                        const bg = gIdx % 2 === 0 ? '#ffffff' : '#f8fafc';
+                                        return (
+                                            <tr key={`e-${gIdx}`} style={{ background: bg, borderTop: '1px solid #e2e8f0' }}>
+                                                <td style={{ padding: '7px 12px', fontWeight: 600, color: '#991b1b' }}>{group.label}</td>
+                                                <td className="num-cell" style={{ padding: '7px 10px', textAlign: 'right', color: '#1e40af', fontWeight: 700 }}>{groupTotal > 0 ? groupTotal.toLocaleString('id-ID') : '-'}</td>
+                                                <td className="num-cell" style={{ padding: '7px 10px', textAlign: 'right', color: '#059669', fontWeight: 700 }}>{pct}</td>
+                                            </tr>
+                                        );
+                                    })}
+                                </tbody>
+                                <tfoot>
+                                    <tr style={{ background: '#fee2e2', borderTop: '3px solid #ef4444' }}>
+                                        <td style={{ padding: '9px 12px', fontWeight: 800, color: '#991b1b', fontSize: '0.82rem' }}>TOTAL PESTISIDA</td>
+                                        <td className="num-cell" style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 800, color: '#991b1b' }}>{formatRp(totalPestisida)}</td>
+                                        <td className="num-cell" style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 800, color: '#991b1b' }}>{totalOmset > 0 ? ((totalPestisida / totalOmset) * 100).toFixed(2) : '0.00'}</td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
                     </div>
+
+                    {/* FOOTER: Total Omzet + Target */}
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', borderTop: '4px double #475569' }}>
+                        <tbody>
+                            <tr style={{ background: '#1e293b' }}>
+                                <td style={{ padding: '10px 12px', fontWeight: 900, color: '#fbbf24', fontSize: '0.85rem', width: '40%' }}>TOTAL OMZET</td>
+                                <td className="num-cell" style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 900, color: '#fbbf24', width: '30%' }}>{formatRp(totalOmset)}</td>
+                                <td className="num-cell" style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 900, color: '#fbbf24', width: '15%' }}>100.00</td>
+                                <td style={{ width: '15%' }}></td>
+                            </tr>
+                            <tr style={{ background: '#fef3c7', borderTop: '2px solid #f59e0b' }}>
+                                <td style={{ padding: '9px 12px', fontWeight: 800, color: '#92400e', fontSize: '0.82rem' }}>🎯 TARGET {tahunAktif}</td>
+                                <td className="num-cell" style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 800, color: '#92400e' }}>{TARGET_TOTAL.toLocaleString('id-ID')}</td>
+                                <td className="num-cell" style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 800, color: '#92400e' }}>{TARGET_TOTAL > 0 ? ((totalOmset / TARGET_TOTAL) * 100).toFixed(2) : '0.00'}</td>
+                                <td></td>
+                            </tr>
+                            <tr style={{ background: TARGET_TOTAL > 0 && totalOmset >= TARGET_TOTAL ? '#dcfce7' : '#fef2f2' }}>
+                                <td style={{ padding: '9px 12px', fontWeight: 700, color: TARGET_TOTAL > 0 && totalOmset >= TARGET_TOTAL ? '#166534' : '#991b1b', fontSize: '0.82rem' }}>PENCAPAIAN TARGET</td>
+                                <td className="num-cell" colSpan={3} style={{ padding: '9px 10px', textAlign: 'center', fontWeight: 800, color: TARGET_TOTAL > 0 && totalOmset >= TARGET_TOTAL ? '#166534' : '#991b1b', fontSize: '0.9rem' }}>
+                                    {TARGET_TOTAL > 0 ? ((totalOmset / TARGET_TOTAL) * 100).toFixed(2) : '0.00'}% dari Target
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             )}
 
