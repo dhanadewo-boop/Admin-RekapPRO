@@ -24,6 +24,20 @@ const PCT_BAR = (pct) => {
 const fmt   = (n) => new Intl.NumberFormat('id-ID').format(Math.round(n));
 const fmtRp = (n) => 'Rp ' + new Intl.NumberFormat('id-ID').format(Math.round(n));
 
+// Konversi qty dari DUS ke satuan lain berdasarkan faktor konversi di view
+const konversiQty = (qty, satuan, row) => {
+    if (satuan === 'DUS') return qty;
+    if (satuan === 'LITER' && row.liter_per_dus) return qty * Number(row.liter_per_dus);
+    if (satuan === 'KG'    && row.kg_per_dus)    return qty * Number(row.kg_per_dus);
+    return qty; // fallback: produk tidak punya konversi untuk satuan ini
+};
+// Konversi untuk aggregate (customer block / produk block)
+const konversiRows = (rows, satuan) => rows.map(r => ({
+    ...r,
+    _qty_target:    konversiQty(Number(r.target_qty), satuan, r),
+    _qty_realisasi: konversiQty(Number(r.realisasi_qty || 0), satuan, r),
+}));
+
 function ProgressBar({ pct }) {
     const bar = PCT_BAR(pct);
     return (
@@ -55,14 +69,15 @@ function SummaryCard({ label, value, sub, color, icon }) {
     );
 }
 
-function CustomerBlock({ customer, kota, area, rows, defaultOpen, expandAll }) {
+function CustomerBlock({ customer, kota, area, rows, defaultOpen, expandAll, satuan = 'DUS' }) {
     const [open, setOpen] = useState(defaultOpen);
     useEffect(() => {
         if (expandAll === true)  setOpen(true);
         if (expandAll === false) setOpen(false);
     }, [expandAll]);
-    const totalTarget = rows.reduce((s, r) => s + Number(r.target_qty), 0);
-    const totalReal   = rows.reduce((s, r) => s + Number(r.realisasi_qty || 0), 0);
+    const convRows    = konversiRows(rows, satuan);
+    const totalTarget = convRows.reduce((s, r) => s + r._qty_target, 0);
+    const totalReal   = convRows.reduce((s, r) => s + r._qty_realisasi, 0);
     const totalRp     = rows.reduce((s, r) => s + Number(r.realisasi_rupiah || 0), 0);
     const isNonTarget = area === 'NON TARGET';
     const overallPct  = totalTarget > 0 ? (totalReal / totalTarget) * 100 : null;
@@ -123,16 +138,16 @@ function CustomerBlock({ customer, kota, area, rows, defaultOpen, expandAll }) {
                             </tr>
                         </thead>
                         <tbody>
-                            {rows.map((r, i) => {
-                                const pct  = r.pct_capai !== null && r.pct_capai !== undefined ? Number(r.pct_capai) : null;
-                                const sisa = Number(r.target_qty) - Number(r.realisasi_qty || 0);
+                            {convRows.map((r, i) => {
+                                const pct  = r.target_qty > 0 ? (r._qty_realisasi / r._qty_target * 100) : (r.pct_capai !== null ? Number(r.pct_capai) : null);
+                                const sisa = r._qty_target - r._qty_realisasi;
                                 const st   = getStatusStyle(pct);
                                 return (
                                     <tr key={i} style={{ borderTop: '1px solid #f3f4f6', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
                                         <td style={{ ...TD, fontWeight: 600, color: '#374151' }}>{r.product_name}</td>
                                         <td style={{ ...TD, textAlign: 'center', color: '#6b7280' }}>{r.satuan}</td>
-                                        <td style={{ ...TD, textAlign: 'right', fontWeight: 600 }}>{fmt(r.target_qty)}</td>
-                                        <td style={{ ...TD, textAlign: 'right', color: pct > 0 ? '#15803d' : '#374151', fontWeight: pct > 0 ? 600 : 400 }}>{fmt(r.realisasi_qty || 0)}</td>
+                                        <td style={{ ...TD, textAlign: 'right', fontWeight: 600 }}>{fmt(r._qty_target)}</td>
+                                        <td style={{ ...TD, textAlign: 'right', color: pct > 0 ? '#15803d' : '#374151', fontWeight: pct > 0 ? 600 : 400 }}>{fmt(r._qty_realisasi)}</td>
                                         <td style={{ ...TD, textAlign: 'right', color: sisa > 0 ? '#dc2626' : '#15803d', fontWeight: 600 }}>{sisa > 0 ? fmt(sisa) : '✓'}</td>
                                         <td style={{ ...TD, textAlign: 'right', color: '#374151' }}>{fmtRp(r.realisasi_rupiah || 0)}</td>
                                         <td style={{ ...TD, textAlign: 'center' }}>
@@ -355,8 +370,8 @@ export default function ProgramTargetPage() {
     }, [grouped, filterArea, filterStatus]);
 
     const stats = useMemo(() => {
-        const totalTarget = data.reduce((s, r) => s + Number(r.target_qty), 0);
-        const totalReal   = data.reduce((s, r) => s + Number(r.realisasi_qty || 0), 0);
+        const totalTarget = data.reduce((s, r) => s + konversiQty(Number(r.target_qty), satuan, r), 0);
+        const totalReal   = data.reduce((s, r) => s + konversiQty(Number(r.realisasi_qty || 0), satuan, r), 0);
         const totalRp     = data.reduce((s, r) => s + Number(r.realisasi_rupiah || 0), 0);
         const overallPct  = totalTarget > 0 ? (totalReal / totalTarget) * 100 : 0;
         const lunas       = grouped.filter(g => {
@@ -378,6 +393,18 @@ export default function ProgramTargetPage() {
         });
         return Object.values(map).sort((a, b) => b.target - a.target);
     }, [data]);
+
+    // rekapProduk dengan konversi satuan
+    const rekapProdukConv = useMemo(() => {
+        return rekapProduk.map(p => {
+            const refRow = data.find(r => r.product_name === p.product) || {};
+            return {
+                ...p,
+                targetConv:    konversiQty(p.target, satuan, refRow),
+                realisasiConv: konversiQty(p.realisasi, satuan, refRow),
+            };
+        });
+    }, [rekapProduk, satuan, data]);
 
     // Tab 2: grouped per produk → per customer
     const groupedByProduk = useMemo(() => {
@@ -463,8 +490,8 @@ export default function ProgramTargetPage() {
 
             {/* Summary Cards */}
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 24 }}>
-                <SummaryCard label="Total Target"     value={`${fmt(stats.totalTarget)} DUS`} sub={`${data.filter(r => r.target_qty > 0).length} item target`} color="#3b82f6" icon="🎯" />
-                <SummaryCard label="Realisasi"        value={`${fmt(stats.totalReal)} DUS`}   sub={`${stats.overallPct.toFixed(1)}% dari total target`}       color="#22c55e" icon="📦" />
+                <SummaryCard label="Total Target"     value={`${fmt(stats.totalTarget)} ${satuan}`} sub={`${data.filter(r => r.target_qty > 0).length} item target`} color="#3b82f6" icon="🎯" />
+                <SummaryCard label="Realisasi"        value={`${fmt(stats.totalReal)} ${satuan}`}   sub={`${stats.overallPct.toFixed(1)}% dari total target`}       color="#22c55e" icon="📦" />
                 <SummaryCard label="Nilai Penjualan"  value={fmtRp(stats.totalRp)}             sub="Dari invoice terkonfirmasi"                                color="#f59e0b" icon="💰" />
                 <SummaryCard label="Customer Lunas"   value={`${stats.lunas} / ${grouped.length}`} sub="Sudah ≥100% pencapaian"                               color="#8b5cf6" icon="🏆" />
             </div>
@@ -480,7 +507,7 @@ export default function ProgramTargetPage() {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: '0.72rem', color: '#9ca3af' }}>
                     <span>0</span>
-                    <span>{fmt(stats.totalReal)} DUS terealisasi dari {fmt(stats.totalTarget)} DUS target</span>
+                    <span>{fmt(stats.totalReal)} {satuan} terealisasi dari {fmt(stats.totalTarget)} {satuan} target</span>
                     <span>{fmt(stats.totalTarget)}</span>
                 </div>
             </div>
@@ -547,22 +574,29 @@ export default function ProgramTargetPage() {
 
             {/* TAB 1: Per Customer */}
             {!loading && activeTab === 'customer' && filtered.map((g, i) => (
-                <CustomerBlock key={g.customer} customer={g.customer} kota={g.kota} area={g.area} rows={g.rows} defaultOpen={false} expandAll={expandAll} />
+                <CustomerBlock key={g.customer} customer={g.customer} kota={g.kota} area={g.area} rows={g.rows} defaultOpen={false} expandAll={expandAll} satuan={satuan} />
             ))}
 
             {/* TAB 2: Per Produk → Per Customer */}
             {!loading && activeTab === 'produk' && (
                 <div>
                     {groupedByProduk.map((p, pi) => {
-                        const totalTarget   = p.customers.reduce((s, c) => s + c.target, 0);
-                        const totalRealisasi = p.customers.reduce((s, c) => s + c.realisasi, 0);
+                        // konversi pakai row pertama untuk dapat liter/kg_per_dus
+                        const refRow = data.find(r => r.product_name === p.product) || {};
+                        const convC  = p.customers.map(c => ({
+                            ...c,
+                            target:    konversiQty(c.target, satuan, refRow),
+                            realisasi: konversiQty(c.realisasi, satuan, refRow),
+                        }));
+                        const totalTarget   = convC.reduce((s, c) => s + c.target, 0);
+                        const totalRealisasi = convC.reduce((s, c) => s + c.realisasi, 0);
                         const totalRupiah   = p.customers.reduce((s, c) => s + c.rupiah, 0);
                         const overallPct    = totalTarget > 0 ? (totalRealisasi / totalTarget) * 100 : null;
                         const st            = getStatusStyle(overallPct, false);
                         const [open, setOpen] = [true, () => {}]; // always show inline — use local state via key
                         return (
                             <ProdukBlock key={p.product} product={p.product} satuan={satuan}
-                                customers={p.customers} totalTarget={totalTarget}
+                                customers={convC} totalTarget={totalTarget}
                                 totalRealisasi={totalRealisasi} totalRupiah={totalRupiah}
                                 overallPct={overallPct} st={st} expandAll={expandAll} />
                         );
@@ -590,15 +624,15 @@ export default function ProgramTargetPage() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {rekapProduk.map((p, i) => {
-                                    const pct  = p.target > 0 ? (p.realisasi / p.target) * 100 : 0;
-                                    const sisa = p.target - p.realisasi;
+                                {rekapProdukConv.map((p, i) => {
+                                    const pct  = p.targetConv > 0 ? (p.realisasiConv / p.targetConv) * 100 : 0;
+                                    const sisa = p.targetConv - p.realisasiConv;
                                     const st   = getStatusStyle(pct);
                                     return (
                                         <tr key={i} style={{ borderTop: '1px solid #f3f4f6', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
                                             <td style={{ ...TD, fontWeight: 700, color: '#374151' }}>{p.product}</td>
-                                            <td style={{ ...TD, textAlign: 'right' }}>{fmt(p.target)}</td>
-                                            <td style={{ ...TD, textAlign: 'right', color: pct > 0 ? '#15803d' : '#374151', fontWeight: 600 }}>{fmt(p.realisasi)}</td>
+                                            <td style={{ ...TD, textAlign: 'right' }}>{fmt(p.targetConv)}</td>
+                                            <td style={{ ...TD, textAlign: 'right', color: pct > 0 ? '#15803d' : '#374151', fontWeight: 600 }}>{fmt(p.realisasiConv)}</td>
                                             <td style={{ ...TD, textAlign: 'right', color: sisa > 0 ? '#dc2626' : '#15803d', fontWeight: 600 }}>{sisa > 0 ? fmt(sisa) : '✓'}</td>
                                             <td style={{ ...TD, textAlign: 'right' }}>{fmtRp(p.rupiah)}</td>
                                             <td style={{ ...TD }}>
