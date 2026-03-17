@@ -961,7 +961,7 @@ export default function SettingsPage() {
     };
 
     return (
-        <div style={{ padding: '32px 40px', maxWidth: 1400, margin: '0 auto' }}>
+        <div className="animate-fade-in">
             <div style={{ marginBottom: 32 }}>
                 <h1 style={{ fontSize: '1.6rem', fontWeight: 800, marginBottom: 6 }}>⚙️ Settings</h1>
                 <p style={{ fontSize: '1rem', color: 'var(--text-secondary)' }}>Konfigurasi sistem · Fase 1</p>

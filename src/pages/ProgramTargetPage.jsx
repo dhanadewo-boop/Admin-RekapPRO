@@ -5,7 +5,7 @@ import { TrendingUp, AlertCircle, RefreshCw, ChevronDown, ChevronUp, Filter } fr
 const getStatusStyle = (pct, isNonTarget) => {
     if (isNonTarget) return { bg: '#f3f4f6', color: '#6b7280', label: 'NON TARGET', icon: '–' };
     if (pct === null || pct === undefined) return { bg: '#f3f4f6', color: '#9ca3af', label: '–', icon: '–' };
-    if (pct >= 100) return { bg: '#dcfce7', color: '#15803d', label: 'LUNAS',  icon: '✓' };
+    if (pct >= 100) return { bg: '#dcfce7', color: '#15803d', label: 'TERCAPAI',  icon: '✓' };
     if (pct >= 80)  return { bg: '#dbeafe', color: '#1d4ed8', label: 'HAMPIR', icon: '◎' };
     if (pct >= 50)  return { bg: '#fef9c3', color: '#a16207', label: 'JALAN',  icon: '◑' };
     if (pct > 0)    return { bg: '#fee2e2', color: '#dc2626', label: 'KURANG', icon: '○' };
@@ -24,18 +24,36 @@ const PCT_BAR = (pct) => {
 const fmt   = (n) => new Intl.NumberFormat('id-ID').format(Math.round(n));
 const fmtRp = (n) => 'Rp ' + new Intl.NumberFormat('id-ID').format(Math.round(n));
 
-// Konversi qty dari DUS ke satuan lain berdasarkan faktor konversi di view
-const konversiQty = (qty, satuan, row) => {
-    if (satuan === 'DUS') return qty;
-    if (satuan === 'LITER' && row.liter_per_dus) return qty * Number(row.liter_per_dus);
-    if (satuan === 'KG'    && row.kg_per_dus)    return qty * Number(row.kg_per_dus);
-    return qty; // fallback: produk tidak punya konversi untuk satuan ini
+// Konversi REALISASI saja ke satuan toggle
+// Target TIDAK dikonversi — selalu dalam satuan asli (r.satuan dari product_targets)
+// % selalu dihitung target_qty vs realisasi_qty dalam DUS (satuan asli, apple-to-apple)
+const konversiRealisasi = (qty_dus, satuan_toggle, row) => {
+    if (satuan_toggle === 'DUS') return qty_dus;
+    if (satuan_toggle === 'LITER' && row.liter_per_dus) return qty_dus * Number(row.liter_per_dus);
+    if (satuan_toggle === 'KG'    && row.kg_per_dus)    return qty_dus * Number(row.kg_per_dus);
+    return null; // produk ini tidak punya konversi untuk satuan toggle ini
 };
-// Konversi untuk aggregate (customer block / produk block)
-const konversiRows = (rows, satuan) => rows.map(r => ({
+
+// Label satuan realisasi — bisa beda dengan satuan target
+const satuanRealisasiLabel = (satuan_toggle, row) => {
+    if (satuan_toggle === 'DUS') return 'DUS';
+    if (satuan_toggle === 'LITER' && row.liter_per_dus) return 'LITER';
+    if (satuan_toggle === 'KG'    && row.kg_per_dus)    return 'KG';
+    return 'DUS'; // fallback ke DUS kalau tidak ada faktor konversi
+};
+
+// % pencapaian selalu dalam DUS (satuan asli) — tidak terpengaruh toggle
+const hitungPct = (target_qty, realisasi_qty) => {
+    if (!target_qty || target_qty <= 0) return null;
+    return (Number(realisasi_qty || 0) / Number(target_qty)) * 100;
+};
+
+// konversiRows untuk CustomerBlock — realisasi saja yang dikonversi
+const konversiRows = (rows, satuan_toggle) => rows.map(r => ({
     ...r,
-    _qty_target:    konversiQty(Number(r.target_qty), satuan, r),
-    _qty_realisasi: konversiQty(Number(r.realisasi_qty || 0), satuan, r),
+    _real_konversi:  konversiRealisasi(Number(r.realisasi_qty || 0), satuan_toggle, r),
+    _satuan_real:    satuanRealisasiLabel(satuan_toggle, r),
+    _pct:            hitungPct(r.target_qty, r.realisasi_qty), // selalu DUS
 }));
 
 function ProgressBar({ pct }) {
@@ -69,18 +87,30 @@ function SummaryCard({ label, value, sub, color, icon }) {
     );
 }
 
-function CustomerBlock({ customer, kota, area, rows, defaultOpen, expandAll, satuan = 'DUS' }) {
+function CustomerBlock({ customer, kota, area, rows, defaultOpen, expandAll }) {
     const [open, setOpen] = useState(defaultOpen);
+    const [satuan, setSatuan] = useState('DUS'); // toggle per-accordion
     useEffect(() => {
         if (expandAll === true)  setOpen(true);
         if (expandAll === false) setOpen(false);
     }, [expandAll]);
     const convRows    = konversiRows(rows, satuan);
-    const totalTarget = convRows.reduce((s, r) => s + r._qty_target, 0);
-    const totalReal   = convRows.reduce((s, r) => s + r._qty_realisasi, 0);
+    // Target dalam DUS (satuan asli), tidak dikonversi
+    const totalTarget = rows.reduce((s, r) => s + Number(r.target_qty), 0);
+    // Realisasi dalam DUS untuk % pencapaian
+    const totalRealDUS = rows.reduce((s, r) => s + Number(r.realisasi_qty || 0), 0);
+    // Realisasi dalam satuan toggle untuk display
+    const totalRealDisplay = convRows.reduce((s, r) => s + (r._real_konversi ?? Number(r.realisasi_qty || 0)), 0);
     const totalRp     = rows.reduce((s, r) => s + Number(r.realisasi_rupiah || 0), 0);
     const isNonTarget = area === 'NON TARGET';
-    const overallPct  = totalTarget > 0 ? (totalReal / totalTarget) * 100 : null;
+    // % selalu DUS vs DUS
+    const overallPct  = totalTarget > 0 ? (totalRealDUS / totalTarget) * 100 : null;
+    // Sortir produk: % pencapaian tertinggi dulu (tanpa grup toggle)
+    const sortedRows = [...convRows].sort((a, b) => {
+        const pA = a._pct ?? 0;
+        const pB = b._pct ?? 0;
+        return pB - pA;
+    });
     const status      = getStatusStyle(overallPct, isNonTarget);
 
     return (
@@ -112,7 +142,12 @@ function CustomerBlock({ customer, kota, area, rows, defaultOpen, expandAll, sat
                                 </span>
                         </div>
                         <ProgressBar pct={overallPct} />
-                        <div style={{ fontSize: '0.68rem', color: '#9ca3af' }}>{fmt(totalReal)} / {fmt(totalTarget)} DUS</div>
+                        <div style={{ fontSize: '0.68rem', color: '#9ca3af' }}>
+                            {satuan !== 'DUS' && convRows[0]?._real_konversi != null
+                                ? <>{fmt(totalRealDisplay)} {satuan} <span style={{color:'#d1d5db'}}>({fmt(totalRealDUS)} DUS)</span></>
+                                : <>{fmt(totalRealDUS)} / {fmt(totalTarget)} DUS</>
+                            }
+                        </div>
                     </div>
                     <div style={{ textAlign: 'right', minWidth: 100 }}>
                         <div style={{ fontSize: '0.68rem', color: '#9ca3af' }}>Realisasi</div>
@@ -121,6 +156,26 @@ function CustomerBlock({ customer, kota, area, rows, defaultOpen, expandAll, sat
                     <div style={{ color: '#9ca3af' }}>{open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}</div>
                 </div>
             </button>
+            {/* Toggle satuan per-accordion — hanya tampil saat terbuka */}
+            {open && !isNonTarget && (
+                <div style={{ display: 'flex', gap: 4, padding: '6px 20px', background: '#f8fafc', borderBottom: '1px solid #e5e7eb', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.7rem', color: '#9ca3af', fontWeight: 600, marginRight: 4 }}>SATUAN:</span>
+                    {['DUS','LITER','KG'].map(s => (
+                        <button key={s} onClick={e => { e.stopPropagation(); setSatuan(s); }} style={{
+                            padding: '3px 10px', borderRadius: 6, fontSize: '0.72rem', fontWeight: 700,
+                            border: 'none', cursor: 'pointer', transition: 'all 0.15s',
+                            background: satuan === s ? '#f59e0b' : '#e5e7eb',
+                            color: satuan === s ? '#fff' : '#6b7280',
+                            boxShadow: satuan === s ? '0 1px 4px rgba(245,158,11,0.35)' : 'none',
+                        }}>{s}</button>
+                    ))}
+                    {satuan !== 'DUS' && (
+                        <span style={{ fontSize: '0.68rem', color: '#f59e0b', marginLeft: 6, fontStyle: 'italic' }}>
+                            Target tetap DUS · % vs DUS
+                        </span>
+                    )}
+                </div>
+            )}
 
             {open && (
                 <div style={{ overflowX: 'auto' }}>
@@ -138,44 +193,140 @@ function CustomerBlock({ customer, kota, area, rows, defaultOpen, expandAll, sat
                             </tr>
                         </thead>
                         <tbody>
-                            {convRows.map((r, i) => {
-                                const pct  = r.target_qty > 0 ? (r._qty_realisasi / r._qty_target * 100) : (r.pct_capai !== null ? Number(r.pct_capai) : null);
-                                const sisa = r._qty_target - r._qty_realisasi;
-                                const st   = getStatusStyle(pct);
-                                return (
-                                    <tr key={i} style={{ borderTop: '1px solid #f3f4f6', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
-                                        <td style={{ ...TD, fontWeight: 600, color: '#374151' }}>{r.product_name}</td>
-                                        <td style={{ ...TD, textAlign: 'center', color: '#6b7280' }}>{r.satuan}</td>
-                                        <td style={{ ...TD, textAlign: 'right', fontWeight: 600 }}>{fmt(r._qty_target)}</td>
-                                        <td style={{ ...TD, textAlign: 'right', color: pct > 0 ? '#15803d' : '#374151', fontWeight: pct > 0 ? 600 : 400 }}>{fmt(r._qty_realisasi)}</td>
-                                        <td style={{ ...TD, textAlign: 'right', color: sisa > 0 ? '#dc2626' : '#15803d', fontWeight: 600 }}>{sisa > 0 ? fmt(sisa) : '✓'}</td>
-                                        <td style={{ ...TD, textAlign: 'right', color: '#374151' }}>{fmtRp(r.realisasi_rupiah || 0)}</td>
-                                        <td style={{ ...TD, textAlign: 'center' }}>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                                                {pct !== null && <ProgressBar pct={pct} />}
-                                                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: st.color, minWidth: 40, textAlign: 'right' }}>{pct !== null ? pct.toFixed(1) + '%' : '–'}</span>
-                                            </div>
-                                        </td>
-                                        <td style={{ ...TD, textAlign: 'center' }}>
-                                            <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: st.bg, color: st.color, whiteSpace: 'nowrap' }}>{st.icon} {st.label}</span>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
+                            {(() => {
+                                // Cek apakah ada produk dengan satuan berbeda (LITER vs KG)
+                                const satuanGroups = [...new Set(sortedRows.map(r => r.satuan))];
+                                const hasMultiSatuan = satuanGroups.length > 1;
+                                const rows_with_headers = [];
+
+                                if (hasMultiSatuan) {
+                                    // Tampilkan sub-header per satuan
+                                    satuanGroups.forEach(sat => {
+                                        const groupRows = sortedRows.filter(r => r.satuan === sat);
+                                        if (groupRows.length === 0) return;
+                                        // Sub-header
+                                        rows_with_headers.push(
+                                            <tr key={`sat-hdr-${sat}`} style={{ background: sat === 'LITER' ? '#eff6ff' : sat === 'KG' ? '#fef9c3' : '#f1f5f9' }}>
+                                                <td colSpan={8} style={{
+                                                    padding: '5px 14px', fontWeight: 700, fontSize: '0.72rem',
+                                                    color: sat === 'LITER' ? '#1d4ed8' : sat === 'KG' ? '#92400e' : '#374151',
+                                                    letterSpacing: '0.05em', textTransform: 'uppercase'
+                                                }}>
+                                                    {sat === 'LITER' ? '💧 Satuan Target: LITER' : sat === 'KG' ? '⚖️ Satuan Target: KG' : '📦 Satuan Target: DUS'}
+                                                </td>
+                                            </tr>
+                                        );
+                                        // Rows dalam grup
+                                        groupRows.forEach((r, i) => {
+                                            const pct      = r._pct;
+                                            const realDisp = r._real_konversi ?? Number(r.realisasi_qty || 0);
+                                            // SISA mengikuti satuan target row (r.satuan)
+                                            const sisaSatuan = r.satuan; // LITER atau KG atau DUS
+                                            const targetDisplay = Number(r.target_qty);
+                                            // Realisasi dalam satuan target untuk hitung sisa
+                                            const realForSisa = sat === 'LITER'
+                                                ? (r.liter_per_dus ? Number(r.realisasi_qty || 0) * Number(r.liter_per_dus) : Number(r.realisasi_qty || 0))
+                                                : sat === 'KG'
+                                                ? (r.kg_per_dus ? Number(r.realisasi_qty || 0) * Number(r.kg_per_dus) : Number(r.realisasi_qty || 0))
+                                                : Number(r.realisasi_qty || 0);
+                                            const sisa = targetDisplay - realForSisa;
+                                            const st   = getStatusStyle(pct);
+                                            rows_with_headers.push(
+                                                <tr key={`r-${sat}-${i}`} style={{ borderTop: '1px solid #f3f4f6', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                                                    <td style={{ ...TD, fontWeight: 600, color: '#374151' }}>{r.product_name}</td>
+                                                    <td style={{ ...TD, textAlign: 'center', color: '#6b7280' }}>
+                                                        <span style={{ fontSize: '0.65rem', fontWeight: 700, padding: '1px 6px', borderRadius: 99, background: sat === 'LITER' ? '#dbeafe' : sat === 'KG' ? '#fef3c7' : '#f3f4f6', color: sat === 'LITER' ? '#1d4ed8' : sat === 'KG' ? '#92400e' : '#6b7280' }}>{sat}</span>
+                                                    </td>
+                                                    <td style={{ ...TD, textAlign: 'right', fontWeight: 600 }}>
+                                                        {fmt(targetDisplay)} <span style={{ fontSize: '0.65rem', color: '#9ca3af' }}>{sat}</span>
+                                                    </td>
+                                                    <td style={{ ...TD, textAlign: 'right', color: (pct ?? 0) > 0 ? '#15803d' : '#374151', fontWeight: (pct ?? 0) > 0 ? 600 : 400 }}>
+                                                        {fmt(realDisp)}
+                                                        {r._satuan_real !== 'DUS' && r._real_konversi != null && <span style={{ fontSize: '0.65rem', color: '#9ca3af', marginLeft: 2 }}>{r._satuan_real}</span>}
+                                                    </td>
+                                                    <td style={{ ...TD, textAlign: 'right', color: sisa > 0 ? '#dc2626' : '#15803d', fontWeight: 600 }}>
+                                                        {targetDisplay > 0 ? (sisa > 0
+                                                            ? <>{fmt(sisa)}<span style={{ fontSize: '0.65rem', color: '#9ca3af', marginLeft: 2 }}>{sisaSatuan}</span></>
+                                                            : '✓') : '–'}
+                                                    </td>
+                                                    <td style={{ ...TD, textAlign: 'right' }}>{fmtRp(r.realisasi_rupiah || 0)}</td>
+                                                    <td style={{ ...TD }}>
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                            {pct !== null && <ProgressBar pct={pct} />}
+                                                            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: st.color, minWidth: 40, textAlign: 'right' }}>{pct !== null ? pct.toFixed(1) + '%' : '–'}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td style={{ ...TD, textAlign: 'center' }}>
+                                                        <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: st.bg, color: st.color }}>{st.icon} {st.label}</span>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        });
+                                    });
+                                    return rows_with_headers;
+                                }
+
+                                // Normal render (1 satuan saja)
+                                return sortedRows.map((r, i) => {
+                                    const pct      = r._pct;
+                                    const realDisp = r._real_konversi ?? Number(r.realisasi_qty || 0);
+                                    const sisaDUS  = Number(r.target_qty) - Number(r.realisasi_qty || 0);
+                                    const hasKonv  = satuan !== 'DUS' && r._real_konversi != null;
+                                    const st = getStatusStyle(pct);
+                                    return (
+                                        <tr key={i} style={{ borderTop: '1px solid #f3f4f6', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
+                                            <td style={{ ...TD, fontWeight: 600, color: '#374151' }}>{r.product_name}</td>
+                                            <td style={{ ...TD, textAlign: 'center', color: '#6b7280' }}>{r.satuan}</td>
+                                            <td style={{ ...TD, textAlign: 'right', fontWeight: 600 }}>
+                                                {fmt(r.target_qty)}
+                                                <span style={{ fontSize: '0.68rem', color: '#9ca3af', marginLeft: 3 }}>{r.satuan}</span>
+                                            </td>
+                                            <td style={{ ...TD, textAlign: 'right', color: (pct ?? 0) > 0 ? '#15803d' : '#374151', fontWeight: (pct ?? 0) > 0 ? 600 : 400 }}>
+                                                {fmt(realDisp)}
+                                                {hasKonv && <span style={{ fontSize: '0.68rem', color: '#9ca3af', marginLeft: 3 }}>{r._satuan_real}</span>}
+                                                {satuan !== 'DUS' && r._real_konversi == null && <span style={{ fontSize: '0.68rem', color: '#f59e0b', marginLeft: 3 }}>(DUS)</span>}
+                                            </td>
+                                            <td style={{ ...TD, textAlign: 'right', color: sisaDUS > 0 ? '#dc2626' : '#15803d', fontWeight: 600 }}>
+                                                {r.target_qty > 0 ? (sisaDUS > 0 ? <>{fmt(sisaDUS)}<span style={{ fontSize: '0.68rem', color: '#9ca3af', marginLeft: 3 }}>DUS</span></> : '✓') : '–'}
+                                            </td>
+                                            <td style={{ ...TD, textAlign: 'right' }}>{fmtRp(r.realisasi_rupiah || 0)}</td>
+                                            <td style={{ ...TD }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                    {pct !== null && <ProgressBar pct={pct} />}
+                                                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: st.color, minWidth: 40, textAlign: 'right' }}>{pct !== null ? pct.toFixed(1) + '%' : '–'}</span>
+                                                </div>
+                                            </td>
+                                            <td style={{ ...TD, textAlign: 'center' }}>
+                                                <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: st.bg, color: st.color, whiteSpace: 'nowrap' }}>{st.icon} {st.label}</span>
+                                            </td>
+                                        </tr>
+                                    );
+                                });
+                            })()}
                         </tbody>
                         <tfoot>
                             <tr style={{ background: '#f1f5f9', borderTop: '2px solid #e2e8f0' }}>
                                 <td style={{ ...TD, fontWeight: 700, color: '#1e293b' }} colSpan={2}>TOTAL</td>
-                                <td style={{ ...TD, textAlign: 'right', fontWeight: 700 }}>{fmt(totalTarget)}</td>
-                                <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: '#15803d' }}>{fmt(totalReal)}</td>
-                                <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: (totalTarget - totalReal) > 0 ? '#dc2626' : '#15803d' }}>
-                                    {(totalTarget - totalReal) > 0 ? fmt(totalTarget - totalReal) : '✓ LUNAS'}
+                                <td style={{ ...TD, textAlign: 'right', fontWeight: 700 }}>
+                                    {fmt(totalTarget)} <span style={{fontSize:'0.68rem',color:'#9ca3af'}}>DUS</span>
+                                </td>
+                                <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: '#15803d' }}>
+                                    {fmt(totalRealDisplay)}
+                                    {satuan !== 'DUS' && <span style={{fontSize:'0.68rem',color:'#9ca3af',marginLeft:3}}>{satuan}</span>}
+                                </td>
+                                <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: (totalTarget - totalRealDUS) > 0 ? '#dc2626' : '#15803d' }}>
+                                    {(totalTarget - totalRealDUS) > 0
+                                        ? <>{fmt(totalTarget - totalRealDUS)}<span style={{fontSize:'0.68rem',color:'#9ca3af',marginLeft:3}}>DUS</span></>
+                                        : '✓ TERCAPAI'}
                                 </td>
                                 <td style={{ ...TD, textAlign: 'right', fontWeight: 700 }}>{fmtRp(totalRp)}</td>
                                 <td style={{ ...TD, textAlign: 'center' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                         {overallPct !== null && <ProgressBar pct={overallPct} />}
-                                        <span style={{ fontSize: '0.8rem', fontWeight: 800, color: status.color, minWidth: 40, textAlign: 'right' }}>{overallPct !== null ? overallPct.toFixed(1) + '%' : '–'}</span>
+                                        <span style={{ fontSize: '0.8rem', fontWeight: 800, color: status.color, minWidth: 40, textAlign: 'right' }}>
+                                            {overallPct !== null ? overallPct.toFixed(1) + '%' : '–'}
+                                        </span>
+                                        {satuan !== 'DUS' && <span style={{fontSize:'0.65rem',color:'#9ca3af',marginLeft:2,whiteSpace:'nowrap'}}>(vs DUS)</span>}
                                     </div>
                                 </td>
                                 <td style={{ ...TD, textAlign: 'center' }}>
@@ -193,18 +344,11 @@ function CustomerBlock({ customer, kota, area, rows, defaultOpen, expandAll, sat
 const TH = { padding: '8px 14px', fontWeight: 700, fontSize: '0.7rem', color: '#475569', textAlign: 'left', textTransform: 'uppercase', letterSpacing: '0.05em', whiteSpace: 'nowrap' };
 const TD = { padding: '9px 14px', verticalAlign: 'middle' };
 
-const AREAS = ['Semua', 'AREA 1', 'AREA 2', 'AREA 3', 'AREA 4', 'AREA 5', 'NON TARGET'];
-const AREA_LABELS = {
-    'AREA 1': 'Area 1 – Jombang',
-    'AREA 2': 'Area 2 – Nganjuk/Ponorogo',
-    'AREA 3': 'Area 3 – Jember',
-    'AREA 4': 'Area 4 – Banyuwangi',
-    'AREA 5': 'Area 5 – Malang',
-    'NON TARGET': 'Non Target',
-};
+const AREAS = ['Semua', 'NON TARGET'];
+const AREA_LABELS = { 'NON TARGET': 'Non Target' };
 
 
-function ProdukBlock({ product, satuan, customers, totalTarget, totalRealisasi, totalRupiah, overallPct, st, expandAll }) {
+function ProdukBlock({ product, customers, totalTargetDUS, totalRealisasiDUS, totalRupiah, overallPct, st, expandAll }) {
     const [open, setOpen] = useState(true);
     useEffect(() => {
         if (expandAll === true)  setOpen(true);
@@ -213,6 +357,7 @@ function ProdukBlock({ product, satuan, customers, totalTarget, totalRealisasi, 
 
     return (
         <div style={{ background: '#fff', borderRadius: 12, overflow: 'hidden', border: '1px solid #e5e7eb', boxShadow: '0 1px 4px rgba(0,0,0,0.05)', marginBottom: 12 }}>
+            {/* Header accordion */}
             <button onClick={() => setOpen(o => !o)} style={{
                 width: '100%', padding: '14px 20px',
                 display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -224,17 +369,23 @@ function ProdukBlock({ product, satuan, customers, totalTarget, totalRealisasi, 
                     <div style={{ width: 8, height: 8, borderRadius: '50%', background: st.color, flexShrink: 0 }} />
                     <div>
                         <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#111827' }}>{product}</div>
-                        <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>{customers.length} customer · target {fmt(totalTarget)} {satuan}</div>
+                        <div style={{ fontSize: '0.72rem', color: '#9ca3af' }}>
+                            {customers.length} customer · target {fmt(totalTargetDUS)} DUS
+                        </div>
                     </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 20, flexShrink: 0 }}>
-                    <div style={{ textAlign: 'right', minWidth: 120 }}>
+                    <div style={{ textAlign: 'right', minWidth: 140 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end', marginBottom: 4 }}>
                             <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '1px 6px', borderRadius: 99, background: st.bg, color: st.color }}>{st.label}</span>
-                            <span style={{ fontSize: '0.9rem', fontWeight: 700, color: st.color }}>{overallPct !== null ? overallPct.toFixed(1) + '%' : '0%'}</span>
+                            <span style={{ fontSize: '0.9rem', fontWeight: 700, color: st.color }}>
+                                {overallPct !== null ? overallPct.toFixed(1) + '%' : '0%'}
+                            </span>
                         </div>
                         <ProgressBar pct={overallPct ?? 0} />
-                        <div style={{ fontSize: '0.68rem', color: '#9ca3af', marginTop: 4 }}>{fmt(totalRealisasi)} / {fmt(totalTarget)} {satuan}</div>
+                        <div style={{ fontSize: '0.68rem', color: '#9ca3af', marginTop: 4 }}>
+                            {fmt(totalRealisasiDUS)} / {fmt(totalTargetDUS)} DUS
+                        </div>
                     </div>
                     <div style={{ textAlign: 'right', minWidth: 100 }}>
                         <div style={{ fontSize: '0.68rem', color: '#9ca3af' }}>Realisasi</div>
@@ -244,16 +395,17 @@ function ProdukBlock({ product, satuan, customers, totalTarget, totalRealisasi, 
                 </div>
             </button>
 
+            {/* Tabel customers */}
             {open && (
                 <div style={{ overflowX: 'auto' }}>
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                         <thead>
                             <tr style={{ background: '#f8fafc' }}>
                                 <th style={TH}>CUSTOMER</th>
-                                <th style={{ ...TH }}>AREA</th>
-                                <th style={{ ...TH, textAlign: 'right' }}>TARGET ({satuan})</th>
-                                <th style={{ ...TH, textAlign: 'right' }}>REALISASI</th>
-                                <th style={{ ...TH, textAlign: 'right' }}>SISA</th>
+                                <th style={TH}>AREA</th>
+                                <th style={{ ...TH, textAlign: 'right' }}>TARGET (DUS)</th>
+                                <th style={{ ...TH, textAlign: 'right' }}>REALISASI (DUS)</th>
+                                <th style={{ ...TH, textAlign: 'right' }}>SISA (DUS)</th>
                                 <th style={{ ...TH, textAlign: 'right' }}>NILAI (Rp)</th>
                                 <th style={{ ...TH, textAlign: 'center', minWidth: 140 }}>PENCAPAIAN</th>
                                 <th style={{ ...TH, textAlign: 'center' }}>STATUS</th>
@@ -261,25 +413,33 @@ function ProdukBlock({ product, satuan, customers, totalTarget, totalRealisasi, 
                         </thead>
                         <tbody>
                             {customers.map((c, i) => {
-                                const pct  = c.target > 0 ? (c.realisasi / c.target) * 100 : null;
+                                const pct = c.target > 0 ? (c.realisasi / c.target) * 100 : null;
                                 const sisa = c.target - c.realisasi;
                                 const cst  = getStatusStyle(pct, c.area === 'NON TARGET');
                                 return (
                                     <tr key={i} style={{ borderTop: '1px solid #f3f4f6', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
                                         <td style={{ ...TD, fontWeight: 600, color: '#374151' }}>{c.customer}</td>
-                                        <td style={{ ...TD, color: '#6b7280', fontSize: '0.78rem' }}>{c.area}</td>
+                                        <td style={{ ...TD, color: '#6b7280', fontSize: '0.78rem' }}>{c.area || '–'}</td>
                                         <td style={{ ...TD, textAlign: 'right', fontWeight: 600 }}>{c.target > 0 ? fmt(c.target) : '–'}</td>
-                                        <td style={{ ...TD, textAlign: 'right', color: pct > 0 ? '#15803d' : '#374151', fontWeight: pct > 0 ? 600 : 400 }}>{fmt(c.realisasi)}</td>
-                                        <td style={{ ...TD, textAlign: 'right', color: sisa > 0 ? '#dc2626' : '#15803d', fontWeight: 600 }}>{c.target > 0 ? (sisa > 0 ? fmt(sisa) : '✓') : '–'}</td>
+                                        <td style={{ ...TD, textAlign: 'right', color: (pct ?? 0) > 0 ? '#15803d' : '#374151', fontWeight: (pct ?? 0) > 0 ? 600 : 400 }}>
+                                            {fmt(c.realisasi)}
+                                        </td>
+                                        <td style={{ ...TD, textAlign: 'right', color: sisa > 0 ? '#dc2626' : '#15803d', fontWeight: 600 }}>
+                                            {c.target > 0 ? (sisa > 0 ? fmt(sisa) : '✓') : '–'}
+                                        </td>
                                         <td style={{ ...TD, textAlign: 'right' }}>{fmtRp(c.rupiah)}</td>
                                         <td style={{ ...TD }}>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                                 {pct !== null && <ProgressBar pct={pct} />}
-                                                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: cst.color, minWidth: 40, textAlign: 'right' }}>{pct !== null ? pct.toFixed(1) + '%' : '–'}</span>
+                                                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: cst.color, minWidth: 40, textAlign: 'right' }}>
+                                                    {pct !== null ? pct.toFixed(1) + '%' : '–'}
+                                                </span>
                                             </div>
                                         </td>
                                         <td style={{ ...TD, textAlign: 'center' }}>
-                                            <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: cst.bg, color: cst.color }}>{cst.icon} {cst.label}</span>
+                                            <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: cst.bg, color: cst.color }}>
+                                                {cst.icon} {cst.label}
+                                            </span>
                                         </td>
                                     </tr>
                                 );
@@ -288,16 +448,18 @@ function ProdukBlock({ product, satuan, customers, totalTarget, totalRealisasi, 
                         <tfoot>
                             <tr style={{ background: '#f1f5f9', borderTop: '2px solid #e2e8f0' }}>
                                 <td style={{ ...TD, fontWeight: 700, color: '#1e293b' }} colSpan={2}>TOTAL</td>
-                                <td style={{ ...TD, textAlign: 'right', fontWeight: 700 }}>{fmt(totalTarget)}</td>
-                                <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: '#15803d' }}>{fmt(totalRealisasi)}</td>
-                                <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: (totalTarget - totalRealisasi) > 0 ? '#dc2626' : '#15803d' }}>
-                                    {(totalTarget - totalRealisasi) > 0 ? fmt(totalTarget - totalRealisasi) : '✓ LUNAS'}
+                                <td style={{ ...TD, textAlign: 'right', fontWeight: 700 }}>{fmt(totalTargetDUS)}</td>
+                                <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: '#15803d' }}>{fmt(totalRealisasiDUS)}</td>
+                                <td style={{ ...TD, textAlign: 'right', fontWeight: 700, color: (totalTargetDUS - totalRealisasiDUS) > 0 ? '#dc2626' : '#15803d' }}>
+                                    {(totalTargetDUS - totalRealisasiDUS) > 0 ? fmt(totalTargetDUS - totalRealisasiDUS) : '✓ TERCAPAI'}
                                 </td>
                                 <td style={{ ...TD, textAlign: 'right', fontWeight: 700 }}>{fmtRp(totalRupiah)}</td>
                                 <td style={{ ...TD }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                                         {overallPct !== null && <ProgressBar pct={overallPct} />}
-                                        <span style={{ fontSize: '0.8rem', fontWeight: 800, color: st.color, minWidth: 40, textAlign: 'right' }}>{overallPct !== null ? overallPct.toFixed(1) + '%' : '–'}</span>
+                                        <span style={{ fontSize: '0.8rem', fontWeight: 800, color: st.color, minWidth: 40, textAlign: 'right' }}>
+                                            {overallPct !== null ? overallPct.toFixed(1) + '%' : '–'}
+                                        </span>
                                     </div>
                                 </td>
                                 <td style={{ ...TD, textAlign: 'center' }}>
@@ -312,6 +474,7 @@ function ProdukBlock({ product, satuan, customers, totalTarget, totalRealisasi, 
     );
 }
 
+
 export default function ProgramTargetPage() {
     const [data, setData]               = useState([]);
     const [loading, setLoading]         = useState(true);
@@ -322,6 +485,7 @@ export default function ProgramTargetPage() {
     const [lastRefresh, setLastRefresh] = useState(null);
     const [expandAll, setExpandAll]     = useState(null);  // null=default tertutup, true=buka semua, false=tutup semua
     const [activeTab, setActiveTab]     = useState('customer'); // 'customer' | 'produk'
+    const [sortRekap, setSortRekap]     = useState('pct');   // 'pct' | 'nilai'
     const [satuan, setSatuan]           = useState('DUS');      // 'DUS' | 'LITER' | 'KG'
 
     const fetchData = async () => {
@@ -354,32 +518,44 @@ export default function ProgramTargetPage() {
     }, [data]);
 
     const filtered = useMemo(() => {
-        return grouped.filter(g => {
+        const result = grouped.filter(g => {
             if (filterArea !== 'Semua' && g.area !== filterArea) return false;
             if (filterStatus !== 'Semua') {
                 const t = g.rows.reduce((s, r) => s + Number(r.target_qty), 0);
                 const r = g.rows.reduce((s, r2) => s + Number(r2.realisasi_qty || 0), 0);
                 const pct = t > 0 ? (r / t) * 100 : 0;
-                if (filterStatus === 'Lunas'      && pct < 100) return false;
-                if (filterStatus === 'Belum Lunas'&& pct >= 100) return false;
+                if (filterStatus === 'Tercapai'      && pct < 100) return false;
+                if (filterStatus === 'Belum Tercapai'&& pct >= 100) return false;
                 if (filterStatus === '>80%'        && pct < 80)  return false;
                 if (filterStatus === '<50%'        && pct >= 50) return false;
             }
             return true;
         });
+        // Sortir: NON TARGET ke bawah, lalu nilai realisasi (rupiah) terbanyak dulu
+        return result.sort((a, b) => {
+            if (a.area === 'NON TARGET' && b.area !== 'NON TARGET') return 1;
+            if (a.area !== 'NON TARGET' && b.area === 'NON TARGET') return -1;
+            const rpA = a.rows.reduce((s, r) => s + Number(r.realisasi_rupiah || 0), 0);
+            const rpB = b.rows.reduce((s, r) => s + Number(r.realisasi_rupiah || 0), 0);
+            return rpB - rpA; // nilai terbanyak dulu
+        });
     }, [grouped, filterArea, filterStatus]);
 
     const stats = useMemo(() => {
-        const totalTarget = data.reduce((s, r) => s + konversiQty(Number(r.target_qty), satuan, r), 0);
-        const totalReal   = data.reduce((s, r) => s + konversiQty(Number(r.realisasi_qty || 0), satuan, r), 0);
+        // Target selalu DUS
+        const totalTarget = data.reduce((s, r) => s + Number(r.target_qty), 0);
+        // Realisasi DUS
+        const totalRealDUS = data.reduce((s, r) => s + Number(r.realisasi_qty || 0), 0);
+        const totalReal = totalRealDUS;
         const totalRp     = data.reduce((s, r) => s + Number(r.realisasi_rupiah || 0), 0);
-        const overallPct  = totalTarget > 0 ? (totalReal / totalTarget) * 100 : 0;
-        const lunas       = grouped.filter(g => {
+        // % selalu DUS vs DUS
+        const overallPct  = totalTarget > 0 ? (totalRealDUS / totalTarget) * 100 : 0;
+        const tercapai    = grouped.filter(g => {
             const t = g.rows.reduce((s, r) => s + Number(r.target_qty), 0);
             const r = g.rows.reduce((s, r2) => s + Number(r2.realisasi_qty || 0), 0);
             return t > 0 && r / t >= 1;
         }).length;
-        return { totalTarget, totalReal, totalRp, overallPct, lunas };
+        return { totalTarget, totalReal, totalRp, overallPct, tercapai };
     }, [data, grouped]);
 
     const rekapProduk = useMemo(() => {
@@ -396,15 +572,23 @@ export default function ProgramTargetPage() {
 
     // rekapProduk dengan konversi satuan
     const rekapProdukConv = useMemo(() => {
-        return rekapProduk.map(p => {
-            const refRow = data.find(r => r.product_name === p.product) || {};
-            return {
-                ...p,
-                targetConv:    konversiQty(p.target, satuan, refRow),
-                realisasiConv: konversiQty(p.realisasi, satuan, refRow),
-            };
+        const mapped = rekapProduk.map(p => ({
+            ...p,
+            targetConv:    p.target,
+            realisasiConv: p.realisasi,
+            satuanReal:    'DUS',
+            hasKonv:       false,
+        }));
+        if (sortRekap === 'nilai') {
+            return mapped.sort((a, b) => b.rupiah - a.rupiah);
+        }
+        // default: sort by %
+        return mapped.sort((a, b) => {
+            const pA = a.target > 0 ? (a.realisasi / a.target) * 100 : 0;
+            const pB = b.target > 0 ? (b.realisasi / b.target) * 100 : 0;
+            return pB - pA;
         });
-    }, [rekapProduk, satuan, data]);
+    }, [rekapProduk, sortRekap]);
 
     // Tab 2: grouped per produk → per customer
     const groupedByProduk = useMemo(() => {
@@ -432,7 +616,7 @@ export default function ProgramTargetPage() {
     }, [data]);
 
     return (
-        <div style={{ padding: '24px 28px', maxWidth: 1200, margin: '0 auto' }}>
+        <div className="animate-fade-in">
 
             {/* Header */}
             <div style={{ marginBottom: 24, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
@@ -460,40 +644,14 @@ export default function ProgramTargetPage() {
                 </div>
             )}
 
-            {/* Tab Navigation + Toggle Satuan */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 20 }}>
-                <div style={{ display: 'flex', gap: 6, background: '#f1f5f9', padding: 4, borderRadius: 10 }}>
-                    {[['customer','Per Customer'],['produk','Per Produk']].map(([key, label]) => (
-                        <button key={key} onClick={() => setActiveTab(key)} style={{
-                            padding: '6px 18px', borderRadius: 8, fontSize: '0.82rem', fontWeight: 600,
-                            border: 'none', cursor: 'pointer',
-                            background: activeTab === key ? '#fff' : 'transparent',
-                            color: activeTab === key ? '#1d4ed8' : '#6b7280',
-                            boxShadow: activeTab === key ? '0 1px 4px rgba(0,0,0,0.08)' : 'none',
-                            transition: 'all 0.15s'
-                        }}>{label}</button>
-                    ))}
-                </div>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center', background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '5px 10px', boxShadow: '0 1px 4px rgba(0,0,0,0.06)' }}>
-                    <span style={{ fontSize: '0.72rem', color: '#6b7280', fontWeight: 700, letterSpacing: '0.05em' }}>SATUAN:</span>
-                    {['DUS','LITER','KG'].map(s => (
-                        <button key={s} onClick={() => setSatuan(s)} style={{
-                            padding: '6px 16px', borderRadius: 8, fontSize: '0.8rem', fontWeight: 700,
-                            border: 'none', cursor: 'pointer', transition: 'all 0.15s',
-                            background: satuan === s ? '#f59e0b' : 'transparent',
-                            color: satuan === s ? '#fff' : '#9ca3af',
-                            boxShadow: satuan === s ? '0 2px 6px rgba(245,158,11,0.4)' : 'none',
-                        }}>{s}</button>
-                    ))}
-                </div>
-            </div>
+
 
             {/* Summary Cards */}
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 24 }}>
-                <SummaryCard label="Total Target"     value={`${fmt(stats.totalTarget)} ${satuan}`} sub={`${data.filter(r => r.target_qty > 0).length} item target`} color="#3b82f6" icon="🎯" />
-                <SummaryCard label="Realisasi"        value={`${fmt(stats.totalReal)} ${satuan}`}   sub={`${stats.overallPct.toFixed(1)}% dari total target`}       color="#22c55e" icon="📦" />
+                <SummaryCard label="Total Target"     value={`${fmt(stats.totalTarget)} DUS`} sub={`${data.filter(r => r.target_qty > 0).length} item target`} color="#3b82f6" icon="🎯" />
+                <SummaryCard label="Realisasi"        value={`${fmt(stats.totalReal)} DUS`}   sub={`${stats.overallPct.toFixed(1)}% dari total target`}       color="#22c55e" icon="📦" />
                 <SummaryCard label="Nilai Penjualan"  value={fmtRp(stats.totalRp)}             sub="Dari invoice terkonfirmasi"                                color="#f59e0b" icon="💰" />
-                <SummaryCard label="Customer Lunas"   value={`${stats.lunas} / ${grouped.length}`} sub="Sudah ≥100% pencapaian"                               color="#8b5cf6" icon="🏆" />
+                <SummaryCard label="Customer Tercapai"   value={`${stats.tercapai} / ${grouped.length}`} sub="Sudah ≥100% pencapaian"                               color="#8b5cf6" icon="🏆" />
             </div>
 
             {/* Overall progress */}
@@ -507,9 +665,25 @@ export default function ProgramTargetPage() {
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: '0.72rem', color: '#9ca3af' }}>
                     <span>0</span>
-                    <span>{fmt(stats.totalReal)} {satuan} terealisasi dari {fmt(stats.totalTarget)} {satuan} target</span>
+                    <span>{fmt(stats.totalReal)} DUS terealisasi dari {fmt(stats.totalTarget)} DUS target</span>
                     <span>{fmt(stats.totalTarget)}</span>
                 </div>
+            </div>
+
+            {/* Tab Navigation */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
+                {[['customer','👥 Per Customer'],['produk','📦 Per Produk']].map(([key, label]) => (
+                    <button key={key} onClick={() => setActiveTab(key)} style={{
+                        padding: '10px 24px', borderRadius: 10, fontSize: '0.88rem', fontWeight: 700,
+                        border: '2px solid', cursor: 'pointer', transition: 'all 0.15s',
+                        borderColor: activeTab === key ? '#3b82f6' : '#e5e7eb',
+                        background: activeTab === key
+                            ? 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)'
+                            : '#fff',
+                        color: activeTab === key ? '#fff' : '#6b7280',
+                        boxShadow: activeTab === key ? '0 4px 12px rgba(59,130,246,0.35)' : 'none',
+                    }}>{label}</button>
+                ))}
             </div>
 
             {/* Filter AREA */}
@@ -532,7 +706,7 @@ export default function ProgramTargetPage() {
                 <div style={{ width: 1, height: 20, background: '#e5e7eb' }} />
                 <span style={{ fontSize: '0.78rem', color: '#9ca3af', fontWeight: 600 }}>STATUS:</span>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {['Semua', 'Lunas', '>80%', 'Belum Lunas', '<50%'].map(s => (
+                    {['Semua', 'Tercapai', '>80%', 'Belum Tercapai', '<50%'].map(s => (
                         <button key={s} onClick={() => setFilterStatus(s)} style={{
                             padding: '4px 12px', borderRadius: 99, fontSize: '0.78rem', fontWeight: 600,
                             border: '1px solid', cursor: 'pointer',
@@ -574,42 +748,48 @@ export default function ProgramTargetPage() {
 
             {/* TAB 1: Per Customer */}
             {!loading && activeTab === 'customer' && filtered.map((g, i) => (
-                <CustomerBlock key={g.customer} customer={g.customer} kota={g.kota} area={g.area} rows={g.rows} defaultOpen={false} expandAll={expandAll} satuan={satuan} />
+                <CustomerBlock key={g.customer} customer={g.customer} kota={g.kota} area={g.area} rows={g.rows} defaultOpen={false} expandAll={expandAll} />
             ))}
 
             {/* TAB 2: Per Produk → Per Customer */}
             {!loading && activeTab === 'produk' && (
                 <div>
                     {groupedByProduk.map((p, pi) => {
-                        // konversi pakai row pertama untuk dapat liter/kg_per_dus
-                        const refRow = data.find(r => r.product_name === p.product) || {};
-                        const convC  = p.customers.map(c => ({
-                            ...c,
-                            target:    konversiQty(c.target, satuan, refRow),
-                            realisasi: konversiQty(c.realisasi, satuan, refRow),
-                        }));
-                        const totalTarget   = convC.reduce((s, c) => s + c.target, 0);
-                        const totalRealisasi = convC.reduce((s, c) => s + c.realisasi, 0);
-                        const totalRupiah   = p.customers.reduce((s, c) => s + c.rupiah, 0);
-                        const overallPct    = totalTarget > 0 ? (totalRealisasi / totalTarget) * 100 : null;
-                        const st            = getStatusStyle(overallPct, false);
-                        const [open, setOpen] = [true, () => {}]; // always show inline — use local state via key
+                        const totalTarget    = p.customers.reduce((s, c) => s + c.target, 0);
+                        const totalRealisasi = p.customers.reduce((s, c) => s + c.realisasi, 0);
+                        const totalRupiah    = p.customers.reduce((s, c) => s + c.rupiah, 0);
+                        const overallPct     = totalTarget > 0 ? (totalRealisasi / totalTarget) * 100 : null;
+                        const st             = getStatusStyle(overallPct, false);
                         return (
-                            <ProdukBlock key={p.product} product={p.product} satuan={satuan}
-                                customers={convC} totalTarget={totalTarget}
-                                totalRealisasi={totalRealisasi} totalRupiah={totalRupiah}
+                            <ProdukBlock key={p.product} product={p.product}
+                                customers={p.customers}
+                                totalTargetDUS={totalTarget}
+                                totalRealisasiDUS={totalRealisasi}
+                                totalRupiah={totalRupiah}
                                 overallPct={overallPct} st={st} expandAll={expandAll} />
                         );
                     })}
                 </div>
             )}
-
             {/* Rekap per Produk */}
             {!loading && rekapProduk.length > 0 && (
                 <div style={{ background: '#fff', borderRadius: 12, marginTop: 28, border: '1px solid #e5e7eb', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
-                    <div style={{ padding: '14px 20px', borderBottom: '1px solid #e5e7eb', background: '#f8fafc', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <div style={{ padding: '12px 20px', borderBottom: '1px solid #e5e7eb', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         <TrendingUp size={16} style={{ color: '#3b82f6' }} />
                         <h3 style={{ fontWeight: 700, fontSize: '0.9rem', color: '#111827' }}>Rekap per Produk — Semua Customer</h3>
+                        </div>
+                        <div style={{ display: 'flex', gap: 4, background: '#e5e7eb', padding: 3, borderRadius: 8 }}>
+                            {[['pct','% Pencapaian'],['nilai','Nilai (Rp)']].map(([key, label]) => (
+                                <button key={key} onClick={() => setSortRekap(key)} style={{
+                                    padding: '4px 12px', borderRadius: 6, fontSize: '0.75rem', fontWeight: 600,
+                                    border: 'none', cursor: 'pointer', transition: 'all 0.15s',
+                                    background: sortRekap === key ? '#fff' : 'transparent',
+                                    color: sortRekap === key ? '#1d4ed8' : '#6b7280',
+                                    boxShadow: sortRekap === key ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
+                                }}>{label}</button>
+                            ))}
+                        </div>
                     </div>
                     <div style={{ overflowX: 'auto' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
@@ -625,16 +805,23 @@ export default function ProgramTargetPage() {
                             </thead>
                             <tbody>
                                 {rekapProdukConv.map((p, i) => {
-                                    const pct  = p.targetConv > 0 ? (p.realisasiConv / p.targetConv) * 100 : 0;
-                                    const sisa = p.targetConv - p.realisasiConv;
+                                    // % selalu DUS vs DUS
+                                    const pct  = p.target > 0 ? (p.realisasi / p.target) * 100 : 0;
+                                    const sisa = p.target - p.realisasi; // sisa dalam DUS
                                     const st   = getStatusStyle(pct);
                                     return (
                                         <tr key={i} style={{ borderTop: '1px solid #f3f4f6', background: i % 2 === 0 ? '#fff' : '#fafafa' }}>
                                             <td style={{ ...TD, fontWeight: 700, color: '#374151' }}>{p.product}</td>
-                                            <td style={{ ...TD, textAlign: 'right' }}>{fmt(p.targetConv)}</td>
-                                            <td style={{ ...TD, textAlign: 'right', color: pct > 0 ? '#15803d' : '#374151', fontWeight: 600 }}>{fmt(p.realisasiConv)}</td>
-                                            <td style={{ ...TD, textAlign: 'right', color: sisa > 0 ? '#dc2626' : '#15803d', fontWeight: 600 }}>{sisa > 0 ? fmt(sisa) : '✓'}</td>
-                                            <td style={{ ...TD, textAlign: 'right' }}>{fmtRp(p.rupiah)}</td>
+                                            <td style={{ ...TD, textAlign: 'right' }}>
+                                                {fmt(p.target)} <span style={{fontSize:'0.68rem',color:'#9ca3af'}}>DUS</span>
+                                            </td>
+                                            <td style={{ ...TD, textAlign: 'right', color: pct > 0 ? '#15803d' : '#374151', fontWeight: 600 }}>
+                                                {fmt(p.realisasiConv)}
+                                                {p.hasKonv && <span style={{fontSize:'0.68rem',color:'#9ca3af',marginLeft:3}}>{p.satuanReal}</span>}
+                                            </td>
+                                            <td style={{ ...TD, textAlign: 'right', color: sisa > 0 ? '#dc2626' : '#15803d', fontWeight: 600 }}>
+                                                {sisa > 0 ? <>{fmt(sisa)}<span style={{fontSize:'0.68rem',color:'#9ca3af',marginLeft:3}}>DUS</span></> : '✓'}
+                                            </td>                                            <td style={{ ...TD, textAlign: 'right' }}>{fmtRp(p.rupiah)}</td>
                                             <td style={{ ...TD }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                                     <ProgressBar pct={pct} />
@@ -654,7 +841,7 @@ export default function ProgramTargetPage() {
             <div style={{ marginTop: 20, padding: '10px 16px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e5e7eb', display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: '0.72rem', color: '#6b7280' }}>
                 <span style={{ fontWeight: 600, color: '#374151' }}>Keterangan:</span>
                 {[
-                    { s: getStatusStyle(100), l: '≥ 100% Lunas' },
+                    { s: getStatusStyle(100), l: '≥ 100% Tercapai' },
                     { s: getStatusStyle(85),  l: '80–99% Hampir' },
                     { s: getStatusStyle(60),  l: '50–79% Jalan' },
                     { s: getStatusStyle(25),  l: '1–49% Kurang' },

@@ -1,4 +1,4 @@
-import { useEffect, useState, Fragment } from 'react';
+import React, { useEffect, useState, Fragment } from 'react';
 import { supabase } from "../lib/supabase";
 import { getAllProducts, matchProduct } from "../lib/masterData";
 import * as XLSX from 'xlsx';
@@ -303,18 +303,19 @@ export default function RekapTarget() {
                             📥 Export Excel
                         </button>
                     </div>
-                    {/* 2-KOLOM: PUPUK kiri, PESTISIDA kanan */}
+                                        {/* 2-KOLOM: PUPUK kiri, PESTISIDA kanan — per varian produk */}
                     <div style={{ display: 'flex', gap: 0, alignItems: 'flex-start' }}>
 
                         {/* KOLOM PUPUK */}
-                        <div style={{ flex: 1, borderRight: '2px solid #e2e8f0' }}>
-                            <div style={{ padding: '8px 12px', background: '#166534', color: 'white', fontWeight: 800, fontSize: '0.82rem', letterSpacing: '1px' }}>PUPUK</div>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                        <div style={{ flex: 1, borderRight: '2px solid #e2e8f0', minWidth: 0 }}>
+                            <div style={{ padding: '9px 14px', background: '#166534', color: 'white', fontWeight: 800, fontSize: '0.85rem', letterSpacing: '1px' }}>PUPUK</div>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                                 <thead>
-                                    <tr style={{ background: '#2c3e50' }}>
-                                        <th style={{ color: 'white', padding: '7px 12px', textAlign: 'left' }}>PRODUK</th>
-                                        <th style={{ color: 'white', padding: '7px 10px', textAlign: 'right' }}>TOTAL GROUP</th>
-                                        <th style={{ color: 'white', padding: '7px 10px', textAlign: 'right' }}>%</th>
+                                    <tr style={{ background: '#1e293b' }}>
+                                        <th style={{ color: 'white', padding: '7px 14px', textAlign: 'left', fontWeight: 700 }}>PRODUK</th>
+                                        <th style={{ color: 'white', padding: '7px 12px', textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap' }}>TOTAL PRODUK</th>
+                                        <th style={{ color: 'white', padding: '7px 12px', textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap' }}>TOTAL GROUP</th>
+                                        <th style={{ color: 'white', padding: '7px 10px', textAlign: 'right', fontWeight: 700 }}>%</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -322,35 +323,66 @@ export default function RekapTarget() {
                                         let groupTotal = 0;
                                         group.items.forEach(n => { groupTotal += getProductData(n).totalTahun; });
                                         const pct = totalOmset > 0 ? ((groupTotal / totalOmset) * 100).toFixed(2) : '0.00';
-                                        const bg = gIdx % 2 === 0 ? '#ffffff' : '#f8fafc';
-                                        return (
-                                            <tr key={`p-${gIdx}`} style={{ background: bg, borderTop: '1px solid #e2e8f0' }}>
-                                                <td style={{ padding: '7px 12px', fontWeight: 600, color: '#166534' }}>{group.label}</td>
-                                                <td className="num-cell" style={{ padding: '7px 10px', textAlign: 'right', color: '#1e40af', fontWeight: 700 }}>{groupTotal > 0 ? groupTotal.toLocaleString('id-ID') : '-'}</td>
-                                                <td className="num-cell" style={{ padding: '7px 10px', textAlign: 'right', color: '#059669', fontWeight: 700 }}>{pct}</td>
-                                            </tr>
-                                        );
+                                        const bgGroup = gIdx % 2 === 0 ? '#f8fafc' : '#fff';
+                                        return [
+                                            // Baris header group — tersendiri, tidak disambung
+                                            <tr key={`ph-${gIdx}`} style={{ background: '#e8f5e9', borderTop: '2px solid #a5d6a7' }}>
+                                                <td colSpan={4} style={{ padding: '6px 14px', fontWeight: 800, color: '#166534', fontSize: '0.82rem', letterSpacing: '0.03em' }}>
+                                                    {group.label}
+                                                    <span style={{ fontWeight: 400, fontSize: '0.75rem', color: '#4caf50', marginLeft: 8 }}>
+                                                        {groupTotal > 0 ? groupTotal.toLocaleString('id-ID') : '–'} · {pct}%
+                                                    </span>
+                                                </td>
+                                            </tr>,
+                                            // Baris varian produk
+                                            ...group.items.map((name, ii) => {
+                                                const d = getProductData(name);
+                                                const isLast = ii === group.items.length - 1;
+                                                return (
+                                                    <tr key={`p-${gIdx}-${ii}`} style={{
+                                                        background: bgGroup,
+                                                        borderTop: '1px solid #f1f5f9',
+                                                        borderBottom: isLast ? '2px solid #c8e6c9' : 'none'
+                                                    }}>
+                                                        <td style={{ padding: '5px 14px 5px 24px', color: '#334155', fontSize: '0.79rem' }}>
+                                                            <span style={{ color: '#9ca3af', marginRight: 4 }}>↳</span>{name}
+                                                        </td>
+                                                        <td style={{ padding: '5px 12px', textAlign: 'right', color: d.totalTahun > 0 ? '#1e40af' : '#cbd5e1', fontVariantNumeric: 'tabular-nums', fontSize: '0.8rem' }}>
+                                                            {d.totalTahun > 0 ? d.totalTahun.toLocaleString('id-ID') : '–'}
+                                                        </td>
+                                                        <td style={{ padding: '5px 12px', textAlign: 'right', fontWeight: isLast ? 700 : 400, color: isLast ? '#166534' : '#e5e7eb', fontSize: '0.8rem' }}>
+                                                            {isLast ? groupTotal.toLocaleString('id-ID') : ''}
+                                                        </td>
+                                                        <td style={{ padding: '5px 10px', textAlign: 'right', fontWeight: isLast ? 700 : 400, color: isLast ? '#059669' : '#e5e7eb', fontSize: '0.8rem' }}>
+                                                            {isLast ? pct : ''}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })
+                                        ];
                                     })}
                                 </tbody>
                                 <tfoot>
                                     <tr style={{ background: '#dcfce7', borderTop: '3px solid #16a34a' }}>
-                                        <td style={{ padding: '9px 12px', fontWeight: 800, color: '#166534', fontSize: '0.82rem' }}>TOTAL PUPUK</td>
-                                        <td className="num-cell" style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 800, color: '#166534' }}>{formatRp(totalPupuk)}</td>
-                                        <td className="num-cell" style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 800, color: '#166534' }}>{totalOmset > 0 ? ((totalPupuk / totalOmset) * 100).toFixed(2) : '0.00'}</td>
+                                        <td style={{ padding: '9px 14px', fontWeight: 800, color: '#166534', fontSize: '0.83rem' }}>TOTAL PUPUK</td>
+                                        <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 800, color: '#166534', fontVariantNumeric: 'tabular-nums' }}>{formatRp(totalPupuk)}</td>
+                                        <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 800, color: '#166534', fontVariantNumeric: 'tabular-nums' }}>{formatRp(totalPupuk)}</td>
+                                        <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 800, color: '#166534' }}>{totalOmset > 0 ? ((totalPupuk / totalOmset) * 100).toFixed(2) : '0.00'}</td>
                                     </tr>
                                 </tfoot>
                             </table>
                         </div>
 
                         {/* KOLOM PESTISIDA */}
-                        <div style={{ flex: 1 }}>
-                            <div style={{ padding: '8px 12px', background: '#991b1b', color: 'white', fontWeight: 800, fontSize: '0.82rem', letterSpacing: '1px' }}>PESTISIDA</div>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ padding: '9px 14px', background: '#991b1b', color: 'white', fontWeight: 800, fontSize: '0.85rem', letterSpacing: '1px' }}>PESTISIDA</div>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
                                 <thead>
-                                    <tr style={{ background: '#2c3e50' }}>
-                                        <th style={{ color: 'white', padding: '7px 12px', textAlign: 'left' }}>PRODUK</th>
-                                        <th style={{ color: 'white', padding: '7px 10px', textAlign: 'right' }}>TOTAL GROUP</th>
-                                        <th style={{ color: 'white', padding: '7px 10px', textAlign: 'right' }}>%</th>
+                                    <tr style={{ background: '#1e293b' }}>
+                                        <th style={{ color: 'white', padding: '7px 14px', textAlign: 'left', fontWeight: 700 }}>PRODUK</th>
+                                        <th style={{ color: 'white', padding: '7px 12px', textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap' }}>TOTAL PRODUK</th>
+                                        <th style={{ color: 'white', padding: '7px 12px', textAlign: 'right', fontWeight: 700, whiteSpace: 'nowrap' }}>TOTAL GROUP</th>
+                                        <th style={{ color: 'white', padding: '7px 10px', textAlign: 'right', fontWeight: 700 }}>%</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -358,84 +390,122 @@ export default function RekapTarget() {
                                         let groupTotal = 0;
                                         group.items.forEach(n => { groupTotal += getProductData(n).totalTahun; });
                                         const pct = totalOmset > 0 ? ((groupTotal / totalOmset) * 100).toFixed(2) : '0.00';
-                                        const bg = gIdx % 2 === 0 ? '#ffffff' : '#f8fafc';
-                                        return (
-                                            <tr key={`e-${gIdx}`} style={{ background: bg, borderTop: '1px solid #e2e8f0' }}>
-                                                <td style={{ padding: '7px 12px', fontWeight: 600, color: '#991b1b' }}>{group.label}</td>
-                                                <td className="num-cell" style={{ padding: '7px 10px', textAlign: 'right', color: '#1e40af', fontWeight: 700 }}>{groupTotal > 0 ? groupTotal.toLocaleString('id-ID') : '-'}</td>
-                                                <td className="num-cell" style={{ padding: '7px 10px', textAlign: 'right', color: '#059669', fontWeight: 700 }}>{pct}</td>
-                                            </tr>
-                                        );
+                                        const bgGroup = gIdx % 2 === 0 ? '#f8fafc' : '#fff';
+                                        return [
+                                            <tr key={`eh-${gIdx}`} style={{ background: '#fce4ec', borderTop: '2px solid #f48fb1' }}>
+                                                <td colSpan={4} style={{ padding: '6px 14px', fontWeight: 800, color: '#991b1b', fontSize: '0.82rem', letterSpacing: '0.03em' }}>
+                                                    {group.label}
+                                                    <span style={{ fontWeight: 400, fontSize: '0.75rem', color: '#e57373', marginLeft: 8 }}>
+                                                        {groupTotal > 0 ? groupTotal.toLocaleString('id-ID') : '–'} · {pct}%
+                                                    </span>
+                                                </td>
+                                            </tr>,
+                                            ...group.items.map((name, ii) => {
+                                                const d = getProductData(name);
+                                                const isLast = ii === group.items.length - 1;
+                                                return (
+                                                    <tr key={`e-${gIdx}-${ii}`} style={{
+                                                        background: bgGroup,
+                                                        borderTop: '1px solid #f1f5f9',
+                                                        borderBottom: isLast ? '2px solid #ffcdd2' : 'none'
+                                                    }}>
+                                                        <td style={{ padding: '5px 14px 5px 24px', color: '#334155', fontSize: '0.79rem' }}>
+                                                            <span style={{ color: '#9ca3af', marginRight: 4 }}>↳</span>{name}
+                                                        </td>
+                                                        <td style={{ padding: '5px 12px', textAlign: 'right', color: d.totalTahun > 0 ? '#1e40af' : '#cbd5e1', fontVariantNumeric: 'tabular-nums', fontSize: '0.8rem' }}>
+                                                            {d.totalTahun > 0 ? d.totalTahun.toLocaleString('id-ID') : '–'}
+                                                        </td>
+                                                        <td style={{ padding: '5px 12px', textAlign: 'right', fontWeight: isLast ? 700 : 400, color: isLast ? '#991b1b' : '#e5e7eb', fontSize: '0.8rem' }}>
+                                                            {isLast ? groupTotal.toLocaleString('id-ID') : ''}
+                                                        </td>
+                                                        <td style={{ padding: '5px 10px', textAlign: 'right', fontWeight: isLast ? 700 : 400, color: isLast ? '#059669' : '#e5e7eb', fontSize: '0.8rem' }}>
+                                                            {isLast ? pct : ''}
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })
+                                        ];
                                     })}
                                 </tbody>
                                 <tfoot>
                                     <tr style={{ background: '#fee2e2', borderTop: '3px solid #ef4444' }}>
-                                        <td style={{ padding: '9px 12px', fontWeight: 800, color: '#991b1b', fontSize: '0.82rem' }}>TOTAL PESTISIDA</td>
-                                        <td className="num-cell" style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 800, color: '#991b1b' }}>{formatRp(totalPestisida)}</td>
-                                        <td className="num-cell" style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 800, color: '#991b1b' }}>{totalOmset > 0 ? ((totalPestisida / totalOmset) * 100).toFixed(2) : '0.00'}</td>
+                                        <td style={{ padding: '9px 14px', fontWeight: 800, color: '#991b1b', fontSize: '0.83rem' }}>TOTAL PESTISIDA</td>
+                                        <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 800, color: '#991b1b', fontVariantNumeric: 'tabular-nums' }}>{formatRp(totalPestisida)}</td>
+                                        <td style={{ padding: '9px 12px', textAlign: 'right', fontWeight: 800, color: '#991b1b', fontVariantNumeric: 'tabular-nums' }}>{formatRp(totalPestisida)}</td>
+                                        <td style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 800, color: '#991b1b' }}>{totalOmset > 0 ? ((totalPestisida / totalOmset) * 100).toFixed(2) : '0.00'}</td>
                                     </tr>
                                 </tfoot>
                             </table>
                         </div>
                     </div>
 
-                    {/* FOOTER: Total Omzet + Target */}
-                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', borderTop: '4px double #475569' }}>
-                        <tbody>
-                            <tr style={{ background: '#1e293b' }}>
-                                <td style={{ padding: '10px 12px', fontWeight: 900, color: '#fbbf24', fontSize: '0.85rem', width: '40%' }}>TOTAL OMZET</td>
-                                <td className="num-cell" style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 900, color: '#fbbf24', width: '30%' }}>{formatRp(totalOmset)}</td>
-                                <td className="num-cell" style={{ padding: '10px 10px', textAlign: 'right', fontWeight: 900, color: '#fbbf24', width: '15%' }}>100.00</td>
-                                <td style={{ width: '15%' }}></td>
-                            </tr>
-                            <tr style={{ background: '#fef3c7', borderTop: '2px solid #f59e0b' }}>
-                                <td style={{ padding: '9px 12px', fontWeight: 800, color: '#92400e', fontSize: '0.82rem' }}>🎯 TARGET {tahunAktif}</td>
-                                <td className="num-cell" style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 800, color: '#92400e' }}>{TARGET_TOTAL.toLocaleString('id-ID')}</td>
-                                <td className="num-cell" style={{ padding: '9px 10px', textAlign: 'right', fontWeight: 800, color: '#92400e' }}>{TARGET_TOTAL > 0 ? ((totalOmset / TARGET_TOTAL) * 100).toFixed(2) : '0.00'}</td>
-                                <td></td>
-                            </tr>
-                            <tr style={{ background: TARGET_TOTAL > 0 && totalOmset >= TARGET_TOTAL ? '#dcfce7' : '#fef2f2' }}>
-                                <td style={{ padding: '9px 12px', fontWeight: 700, color: TARGET_TOTAL > 0 && totalOmset >= TARGET_TOTAL ? '#166534' : '#991b1b', fontSize: '0.82rem' }}>PENCAPAIAN TARGET</td>
-                                <td className="num-cell" colSpan={3} style={{ padding: '9px 10px', textAlign: 'center', fontWeight: 800, color: TARGET_TOTAL > 0 && totalOmset >= TARGET_TOTAL ? '#166534' : '#991b1b', fontSize: '0.9rem' }}>
-                                    {TARGET_TOTAL > 0 ? ((totalOmset / TARGET_TOTAL) * 100).toFixed(2) : '0.00'}% dari Target
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
+                    {/* FOOTER: Total Omzet + Target + Pencapaian — centered, compact */}
+                    <div style={{ padding: '20px', borderTop: '4px double #475569', background: '#f8fafc', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: 480 }}>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 16px', background: '#dcfce7', borderRadius: 8, borderLeft: '4px solid #16a34a' }}>
+                                <span style={{ fontWeight: 700, color: '#166534', fontSize: '0.85rem' }}>TOTAL PUPUK</span>
+                                <span style={{ fontWeight: 800, color: '#166534', fontVariantNumeric: 'tabular-nums', fontSize: '0.9rem' }}>{formatRp(totalPupuk)}</span>
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 16px', background: '#fee2e2', borderRadius: 8, borderLeft: '4px solid #ef4444' }}>
+                                <span style={{ fontWeight: 700, color: '#991b1b', fontSize: '0.85rem' }}>TOTAL PESTISIDA</span>
+                                <span style={{ fontWeight: 800, color: '#991b1b', fontVariantNumeric: 'tabular-nums', fontSize: '0.9rem' }}>{formatRp(totalPestisida)}</span>
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', background: '#1e293b', borderRadius: 8 }}>
+                                <span style={{ fontWeight: 900, color: '#fbbf24', fontSize: '0.88rem' }}>TOTAL OMZET</span>
+                                <span style={{ fontWeight: 900, color: '#fbbf24', fontVariantNumeric: 'tabular-nums', fontSize: '1rem' }}>{formatRp(totalOmset)}</span>
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 16px', background: '#fef3c7', borderRadius: 8, borderLeft: '4px solid #f59e0b' }}>
+                                <span style={{ fontWeight: 800, color: '#92400e', fontSize: '0.85rem' }}>🎯 TARGET {tahunAktif}</span>
+                                <span style={{ fontWeight: 800, color: '#92400e', fontVariantNumeric: 'tabular-nums', fontSize: '0.9rem' }}>{TARGET_TOTAL.toLocaleString('id-ID')}</span>
+                            </div>
+
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px', background: TARGET_TOTAL > 0 && totalOmset >= TARGET_TOTAL ? '#dcfce7' : '#fef2f2', borderRadius: 8, border: `2px solid ${TARGET_TOTAL > 0 && totalOmset >= TARGET_TOTAL ? '#16a34a' : '#ef4444'}` }}>
+                                <span style={{ fontWeight: 700, color: TARGET_TOTAL > 0 && totalOmset >= TARGET_TOTAL ? '#166534' : '#991b1b', fontSize: '0.85rem' }}>PENCAPAIAN TARGET</span>
+                                <span style={{ fontWeight: 900, color: TARGET_TOTAL > 0 && totalOmset >= TARGET_TOTAL ? '#166534' : '#991b1b', fontSize: '1.1rem' }}>
+                                    {TARGET_TOTAL > 0 ? ((totalOmset / TARGET_TOTAL) * 100).toFixed(2) : '0.00'}%
+                                </span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
 
-            {/* ═══════════════════════════════════════ */}
+                        {/* ═══════════════════════════════════════ */}
             {/* TAB 2: REKAP BULANAN                   */}
             {/* ═══════════════════════════════════════ */}
             {tabAktif === 'bulanan' && (
                 <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
-                    <div style={{ padding: '12px 20px', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-primary)', flexWrap: 'wrap', gap: '8px' }}>
-                        <h2 style={{ fontSize: '1rem', fontWeight: 600 }}>Rekapitulasi Penjualan Bulanan (2026)</h2>
+                    <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border-glass)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'var(--bg-primary)', flexWrap: 'wrap', gap: 8 }}>
+                        <h2 style={{ fontSize: '1rem', fontWeight: 700 }}>Rekapitulasi Penjualan Bulanan {tahunAktif}</h2>
                         <select
-                            onChange={(e) => {
-                                const val = e.target.value;
-                                if (val === 'all') handleExportExcel(null);
-                                else handleExportExcel(Number(val));
-                                e.target.value = '';
-                            }}
+                            onChange={(e) => { const val = e.target.value; if (val === 'all') handleExportExcel(null); else handleExportExcel(Number(val)); e.target.value = ''; }}
                             defaultValue=""
-                            style={{ padding: '6px 10px', fontSize: '0.8rem', borderRadius: '6px', border: 'none', cursor: 'pointer', background: '#10b981', color: 'white', fontWeight: 600 }}
+                            style={{ padding: '7px 12px', fontSize: '0.82rem', borderRadius: 6, border: 'none', cursor: 'pointer', background: '#10b981', color: 'white', fontWeight: 600 }}
                         >
                             <option value="" disabled>📥 Export Excel</option>
                             <option value="all">Semua Periode</option>
-                            {monthsWithData.map(i => (
-                                <option key={i} value={i}>{namaBulanPendek[i]}</option>
-                            ))}
+                            {monthsWithData.map(i => (<option key={i} value={i}>{namaBulanPendek[i]}</option>))}
                         </select>
                     </div>
-                    <div className="visible-scrollbar" style={scrollStyle}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
-                            <thead>
-                                <tr style={{ background: '#2c3e50' }}>
-                                    <th style={{ color: 'white', padding: '10px 12px', textAlign: 'left', position: 'sticky', left: 0, background: '#2c3e50', zIndex: 10, borderRight: '1px solid rgba(255,255,255,0.1)', minWidth: '250px' }}>PRODUK</th>
+
+                    {/* Layout: produk fixed left, bulan scroll horizontal */}
+                    <div style={{ overflowX: 'auto', overflowY: 'visible' }} className="visible-scrollbar">
+                        <table style={{ borderCollapse: 'collapse', fontSize: '0.88rem', whiteSpace: 'nowrap', width: '100%' }}>
+                            <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+                                <tr style={{ background: '#1e293b' }}>
+                                    {/* Fixed left — nama produk */}
+                                    <th style={{
+                                        color: 'white', padding: '11px 16px', textAlign: 'left',
+                                        position: 'sticky', left: 0, background: '#1e293b', zIndex: 11,
+                                        borderRight: '2px solid #475569', minWidth: 260, fontSize: '0.85rem', fontWeight: 700
+                                    }}>PRODUK</th>
+                                    {/* Kolom bulan */}
                                     {namaBulan.map(b => (
-                                        <th key={b} style={{ color: 'white', padding: '10px 8px', textAlign: 'center', borderRight: '1px solid rgba(255,255,255,0.1)', minWidth: '100px' }}>{b}</th>
+                                        <th key={b} style={{ color: 'white', padding: '11px 14px', textAlign: 'right', borderRight: '1px solid rgba(255,255,255,0.08)', minWidth: 130, fontSize: '0.82rem', fontWeight: 600 }}>{b}</th>
                                     ))}
                                 </tr>
                             </thead>
@@ -443,52 +513,103 @@ export default function RekapTarget() {
                                 {hasData ? (
                                     <>
                                         {productGroups.map((group, gIdx) => (
-                                            <Fragment key={`group-${gIdx}`}>
+                                            <React.Fragment key={`group-${gIdx}`}>
+                                                {/* Header kategori */}
                                                 <tr>
-                                                    <td colSpan={13} style={{ padding: '8px 12px', fontWeight: 900, color: 'white', background: group.kategori === 'Pupuk' ? '#166534' : '#991b1b', position: 'sticky', left: 0, fontSize: '0.82rem', letterSpacing: '1px' }}>
-                                                        {group.label}
+                                                    <td colSpan={13} style={{
+                                                        padding: '10px 16px', fontWeight: 900, color: 'white',
+                                                        background: group.kategori === 'Pupuk' ? '#166534' : '#991b1b',
+                                                        position: 'sticky', left: 0,
+                                                        fontSize: '0.85rem', letterSpacing: '1px'
+                                                    }}>
+                                                        ── {group.label} ──
                                                     </td>
                                                 </tr>
                                                 {group.subgroups.map((sg, sgIdx) => (
-                                                    <Fragment key={`sg-${gIdx}-${sgIdx}`}>
+                                                    <React.Fragment key={`sg-${gIdx}-${sgIdx}`}>
                                                         {sg.items.map((name, itemIdx) => {
                                                             const d = getProductData(name);
+                                                            const hasAny = d.bulanan.some(v => v > 0);
                                                             return (
-                                                                <tr key={`i-${gIdx}-${sgIdx}-${itemIdx}`} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                                                                    <td style={{ padding: '5px 12px 5px 20px', fontWeight: 500, color: '#334155', position: 'sticky', left: 0, background: 'white', borderRight: '1px solid #e5e7eb', boxShadow: '2px 0 5px rgba(0,0,0,0.03)', zIndex: 5 }}>{name}</td>
+                                                                <tr key={`i-${gIdx}-${sgIdx}-${itemIdx}`} style={{
+                                                                    borderBottom: '1px solid #f3f4f6',
+                                                                    background: hasAny ? '#fff' : '#fafafa'
+                                                                }}>
+                                                                    {/* Fixed produk name */}
+                                                                    <td style={{
+                                                                        padding: '8px 16px 8px 24px',
+                                                                        fontWeight: hasAny ? 600 : 400,
+                                                                        color: hasAny ? '#1e293b' : '#94a3b8',
+                                                                        position: 'sticky', left: 0,
+                                                                        background: hasAny ? '#fff' : '#fafafa',
+                                                                        borderRight: '2px solid #e5e7eb',
+                                                                        zIndex: 5, fontSize: '0.85rem'
+                                                                    }}>{name}</td>
+                                                                    {/* Nilai per bulan */}
                                                                     {d.bulanan.map((val, i) => (
-                                                                        <td key={i} style={{ padding: '5px 8px', textAlign: 'right', fontFamily: 'monospace', color: '#475569', borderRight: '1px solid #f3f4f6' }}>{val > 0 ? val.toLocaleString('id-ID') : '-'}</td>
+                                                                        <td key={i} style={{
+                                                                            padding: '8px 14px', textAlign: 'right',
+                                                                            fontVariantNumeric: 'tabular-nums',
+                                                                            fontSize: '0.85rem',
+                                                                            color: val > 0 ? '#1e40af' : '#cbd5e1',
+                                                                            borderRight: '1px solid #f1f5f9',
+                                                                            background: val > 0 ? (i % 2 === 0 ? '#fff' : '#f8fafc') : 'transparent'
+                                                                        }}>
+                                                                            {val > 0 ? val.toLocaleString('id-ID') : '–'}
+                                                                        </td>
                                                                     ))}
                                                                 </tr>
                                                             );
                                                         })}
+                                                        {/* Separator antar subgroup */}
                                                         {sgIdx < group.subgroups.length - 1 && (
-                                                            <tr><td colSpan={13} style={{ height: '8px', background: '#f8fafc', padding: 0, borderBottom: 'none' }}></td></tr>
+                                                            <tr><td colSpan={13} style={{ height: 6, background: '#f1f5f9', padding: 0 }}></td></tr>
                                                         )}
-                                                    </Fragment>
+                                                    </React.Fragment>
                                                 ))}
+                                                {/* Separator antar group */}
                                                 {gIdx < productGroups.length - 1 && (
-                                                    <tr><td colSpan={13} style={{ height: '14px', background: '#e2e8f0', padding: 0, borderBottom: 'none' }}></td></tr>
+                                                    <tr><td colSpan={13} style={{ height: 10, background: '#e2e8f0', padding: 0 }}></td></tr>
                                                 )}
-                                            </Fragment>
+                                            </React.Fragment>
                                         ))}
 
-                                        {/* SUMMARY */}
+                                        {/* SUMMARY ROWS */}
                                         <tr style={{ background: '#dcfce7', borderTop: '3px solid #16a34a' }}>
-                                            <td style={{ padding: '10px 12px', fontWeight: 800, color: '#166534', position: 'sticky', left: 0, background: '#dcfce7', borderRight: '1px solid #bbf7d0', zIndex: 5, fontSize: '0.82rem' }}>Jumlah Uang Produk Pupuk</td>
-                                            {pupukMonths.map((v, i) => (<td key={i} style={{ padding: '10px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 800, color: '#166534', borderRight: '1px solid #bbf7d0' }}>{formatRp(v)}</td>))}
+                                            <td style={{ padding: '11px 16px', fontWeight: 800, color: '#166534', position: 'sticky', left: 0, background: '#dcfce7', borderRight: '2px solid #bbf7d0', zIndex: 5, fontSize: '0.85rem' }}>
+                                                Jumlah Uang Produk Pupuk
+                                            </td>
+                                            {pupukMonths.map((v, i) => (
+                                                <td key={i} style={{ padding: '11px 14px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 800, color: '#166534', borderRight: '1px solid #bbf7d0', fontSize: '0.85rem' }}>
+                                                    {formatRp(v)}
+                                                </td>
+                                            ))}
                                         </tr>
                                         <tr style={{ background: '#fee2e2', borderTop: '1px solid #fca5a5' }}>
-                                            <td style={{ padding: '10px 12px', fontWeight: 800, color: '#991b1b', position: 'sticky', left: 0, background: '#fee2e2', borderRight: '1px solid #fecaca', zIndex: 5, fontSize: '0.82rem' }}>Jumlah Uang Produk Pestisida</td>
-                                            {pestiMonths.map((v, i) => (<td key={i} style={{ padding: '10px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 800, color: '#991b1b', borderRight: '1px solid #fecaca' }}>{formatRp(v)}</td>))}
+                                            <td style={{ padding: '11px 16px', fontWeight: 800, color: '#991b1b', position: 'sticky', left: 0, background: '#fee2e2', borderRight: '2px solid #fecaca', zIndex: 5, fontSize: '0.85rem' }}>
+                                                Jumlah Uang Produk Pestisida
+                                            </td>
+                                            {pestiMonths.map((v, i) => (
+                                                <td key={i} style={{ padding: '11px 14px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 800, color: '#991b1b', borderRight: '1px solid #fecaca', fontSize: '0.85rem' }}>
+                                                    {formatRp(v)}
+                                                </td>
+                                            ))}
                                         </tr>
                                         <tr style={{ background: '#1e293b', borderTop: '4px double #475569' }}>
-                                            <td style={{ padding: '12px 12px', fontWeight: 900, color: '#fbbf24', position: 'sticky', left: 0, background: '#1e293b', borderRight: '1px solid #475569', zIndex: 5, fontSize: '0.85rem' }}>TOTAL OMZET PUPUK & PESTISIDA</td>
-                                            {grandMonths.map((v, i) => (<td key={i} style={{ padding: '12px 8px', textAlign: 'right', fontFamily: 'monospace', fontWeight: 900, color: '#fbbf24', borderRight: '1px solid #475569' }}>{formatRp(v)}</td>))}
+                                            <td style={{ padding: '13px 16px', fontWeight: 900, color: '#fbbf24', position: 'sticky', left: 0, background: '#1e293b', borderRight: '2px solid #475569', zIndex: 5, fontSize: '0.88rem' }}>
+                                                TOTAL OMZET PUPUK & PESTISIDA
+                                            </td>
+                                            {grandMonths.map((v, i) => (
+                                                <td key={i} style={{ padding: '13px 14px', textAlign: 'right', fontVariantNumeric: 'tabular-nums', fontWeight: 900, color: '#fbbf24', borderRight: '1px solid #475569', fontSize: '0.88rem' }}>
+                                                    {formatRp(v)}
+                                                </td>
+                                            ))}
                                         </tr>
                                     </>
                                 ) : (
-                                    <tr><td colSpan={13} style={{ padding: '32px', textAlign: 'center', color: '#94a3b8', fontStyle: 'italic' }}>Tidak ada data untuk tahun {tahunAktif}</td></tr>
+                                    <tr><td colSpan={13} style={{ padding: 40, textAlign: 'center', color: '#94a3b8', fontStyle: 'italic', fontSize: '0.9rem' }}>
+                                        Tidak ada data untuk tahun {tahunAktif}
+                                    </td></tr>
                                 )}
                             </tbody>
                         </table>

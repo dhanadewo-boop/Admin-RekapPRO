@@ -14,14 +14,19 @@ const navItems = [
     { to: '/program-target', icon: ClipboardList,   label: 'Program Target',    roles: ['admin', 'pimpinan', 'marketing'] },
     { to: '/customers',      icon: Users,           label: 'Rekap Customer',    roles: ['admin', 'pimpinan', 'marketing'] },
     { to: '/products',       icon: Package,         label: 'Rekap Produk',      roles: ['admin', 'pimpinan', 'marketing'] },
-    { to: '/history',        icon: History,         label: 'Data Historis',     roles: ['admin', 'pimpinan'] },
+    { to: '/history',        icon: History,         label: 'Data Historis',     roles: ['admin', 'pimpinan', 'marketing'] },
     { to: '/settings',       icon: Settings,        label: 'Settings',          roles: ['admin'] },
 ];
 
+// Role permissions summary:
+// admin     → semua menu termasuk Quick Entry & Settings
+// pimpinan  → semua kecuali Quick Entry & Settings (read-only + export)
+// marketing → semua kecuali Quick Entry & Settings (read-only + export)
+
 const roleLabels = {
     admin: 'Administrator',
-    pimpinan: 'Pimpinan',
-    marketing: 'Marketing'
+    pimpinan: 'Pimpinan · Read Only',
+    marketing: 'Marketing · Read Only'
 };
 
 const roleColors = {

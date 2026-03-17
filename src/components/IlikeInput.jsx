@@ -26,10 +26,7 @@ export default function IlikeInput({ value, onChange, items, onSelect, onShiftEn
     const localInputRef = useRef(null);
     const activeInputRef = inputRef || localInputRef;
 
-    // If locked, render the lockedDisplay instead
-    if (lockedDisplay) {
-        return <div ref={wrapperRef}>{lockedDisplay}</div>;
-    }
+    // All hooks MUST be called before any conditional return (Rules of Hooks)
 
     // ILIKE filter: case-insensitive, match anywhere in label, sublabel, or shortcode
     const filtered = value && value.length >= 1 && showResults
@@ -93,6 +90,11 @@ export default function IlikeInput({ value, onChange, items, onSelect, onShiftEn
             activeInputRef.current?.blur();
         }
     };
+
+    // If locked, render the lockedDisplay instead (after all hooks)
+    if (lockedDisplay) {
+        return <div ref={wrapperRef}>{lockedDisplay}</div>;
+    }
 
     return (
         <div ref={wrapperRef} style={{ position: 'relative' }}>

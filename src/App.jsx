@@ -52,7 +52,7 @@ function AppLayout() {
                         <ProtectedRoute allowedRoles={['admin', 'pimpinan']}><TargetsPage /></ProtectedRoute>
                     } />
                     <Route path="/history" element={
-                        <ProtectedRoute allowedRoles={['admin', 'pimpinan']}><HistoricalDataPage /></ProtectedRoute>
+                        <ProtectedRoute allowedRoles={['admin', 'pimpinan', 'marketing']}><HistoricalDataPage /></ProtectedRoute>
                     } />
                     <Route path="/program-target" element={
                      <ProtectedRoute allowedRoles={['admin', 'pimpinan', 'marketing']}>

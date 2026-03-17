@@ -77,11 +77,35 @@ export default function QuickEntryPage() {
         return raw;
     };
 
+    // Validasi tanggal tidak melebihi hari ini
+    const validateDate = (dateStr) => {
+        if (!dateStr) return null;
+        const MONTHS = {Jan:0,Feb:1,Mar:2,Apr:3,Mei:4,May:4,Jun:5,Jul:6,Agu:7,Aug:7,Sep:8,Okt:9,Oct:9,Nov:10,Des:11,Dec:11};
+        const parts = dateStr.split('-');
+        if (parts.length !== 3) return null;
+        const month = MONTHS[parts[1]];
+        if (month === undefined) return null;
+        const inputDate = new Date(parseInt(parts[2]), month, parseInt(parts[0]));
+        const today = new Date(); today.setHours(23, 59, 59, 999);
+        if (inputDate > today) {
+            return `Tanggal ${dateStr} melebihi hari ini. Harap periksa kembali.`;
+        }
+        return null;
+    };
+
     const handleDateKeyDown = (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
             const completed = autoCompleteDate(formData.invoiceDate);
             updateField('invoiceDate', completed);
+            const dateErr = validateDate(completed);
+            if (dateErr) {
+                setError(dateErr);
+                updateField('invoiceDate', '');
+                return;
+            } else if (completed) {
+                setError('');
+            }
 
             // Move focus to first product input
             setTimeout(() => {
@@ -430,9 +454,11 @@ export default function QuickEntryPage() {
                                         onChange={e => updateField('invoiceDate', e.target.value)}
                                         onKeyDown={handleDateKeyDown}
                                         onBlur={() => {
-                                            // Auto-complete on blur too
                                             const completed = autoCompleteDate(formData.invoiceDate);
                                             updateField('invoiceDate', completed);
+                                            const dateErr = validateDate(completed);
+                                            if (dateErr) { setError(dateErr); updateField('invoiceDate', ''); }
+                                            else if (completed) setError('');
                                         }}
                                         placeholder="26-2 → Enter"
                                     />
